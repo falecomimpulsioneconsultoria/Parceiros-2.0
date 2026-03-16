@@ -17,7 +17,7 @@ export function NetworkPage() {
   const [loading, setLoading] = useState(true);
 
   const { user } = useAuth();
-  const inviteLink = `https://partnercrm.app/ref/${user?.id || ''}`;
+  const inviteLink = `${window.location.origin}/ref/${user?.id || ''}`;
 
   useEffect(() => {
     if (user) {

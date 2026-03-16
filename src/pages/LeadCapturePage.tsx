@@ -175,16 +175,33 @@ export function LeadCapturePage() {
       // Save to Supabase
       try {
         if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) {
+          // 1. Cria o lead (dados pessoais)
           const leadDataInsert: Database['public']['Tables']['leads']['Insert'] = {
             name: newLeadData.name,
             email: newLeadData.email,
             phone: newLeadData.whatsapp,
-            product_id: product.id,
             partner_id: partnerId || null,
-            status: 'novo',
+            status: 'Lead',
             created_at: new Date().toISOString()
           };
-          await supabase.from('leads').insert([leadDataInsert]);
+          const { data: newLead, error: leadError } = await supabase
+            .from('leads')
+            .insert([leadDataInsert])
+            .select()
+            .single();
+          
+          if (leadError) throw leadError;
+
+          // 2. Cria o negócio (lead_deal) vinculado ao lead e ao produto capturado
+          if (newLead && partnerId) {
+            await supabase.from('lead_deals').insert([{
+              lead_id: newLead.id,
+              partner_id: partnerId,
+              product_id: product.id,
+              status: 'Lead',
+              value: parseFloat(product.price) || 0,
+            }]);
+          }
         }
       } catch (error) {
         console.error('Error saving lead to Supabase:', error);

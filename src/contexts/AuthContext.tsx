@@ -7,6 +7,7 @@ type Role = 'admin' | 'partner' | 'client';
 type AuthContextType = {
   user: User | null;
   role: Role | null;
+  status: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
 };
@@ -16,6 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchRole(session.user.id);
       } else {
         setRole(null);
+        setStatus(null);
         setLoading(false);
       }
     });
@@ -47,19 +50,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, status')
         .eq('id', userId)
         .single();
       
       if (data) {
         setRole(data.role as Role);
+        setStatus(data.status);
       } else {
         // Se não tiver perfil, assume como cliente por padrão
         setRole('client');
+        setStatus('Ativo');
       }
     } catch (error) {
       console.error('Erro ao buscar perfil:', error);
       setRole('client');
+      setStatus('Ativo');
     } finally {
       setLoading(false);
     }
@@ -70,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, signOut }}>
+    <AuthContext.Provider value={{ user, role, status, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

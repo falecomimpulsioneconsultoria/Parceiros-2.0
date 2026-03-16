@@ -1,11 +1,12 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, DollarSign, Settings, LogOut, Shield, Package } from 'lucide-react';
+import { LayoutDashboard, Users, Contact, DollarSign, Settings, LogOut, Shield, Package } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: 'Visão Geral', href: '/admin' },
   { icon: Users, label: 'Parceiros', href: '/admin/partners' },
+  { icon: Contact, label: 'Clientes', href: '/admin/clients' },
   { icon: Shield, label: 'Usuários', href: '/admin/users' },
   { icon: Package, label: 'Produtos', href: '/admin/products' },
   { icon: DollarSign, label: 'Saques Pendentes', href: '/admin/withdrawals' },

@@ -11,6 +11,7 @@ import { ClientsPage } from './pages/ClientsPage';
 import { FunnelPage } from './pages/FunnelPage';
 import { CommissionsPage } from './pages/CommissionsPage';
 import { LeadCapturePage } from './pages/LeadCapturePage';
+import { RegisterPage } from './pages/RegisterPage';
 
 // Admin Pages
 import { AdminLayout } from './components/AdminLayout';
@@ -29,6 +30,7 @@ export default function App() {
           {/* Public Routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/capture/:productId" element={<LeadCapturePage />} />
+          <Route path="/ref/:partnerId" element={<RegisterPage />} />
 
           {/* Partner App Routes */}
           <Route element={<ProtectedRoute allowedRoles={['partner']} />}>
@@ -47,6 +49,7 @@ export default function App() {
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="partners" element={<AdminPartners />} />
+              <Route path="clients" element={<ClientsPage />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="products" element={<AdminProducts />} />
               <Route path="withdrawals" element={<AdminWithdrawals />} />

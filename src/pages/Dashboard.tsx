@@ -11,8 +11,11 @@ export function Dashboard() {
     comissoesMes: 0,
     parceirosRede: 0,
     produtosVendidos: 0,
+    emNegociacao: 0,
+    valorFechado: 0,
   });
   const [referredBy, setReferredBy] = useState<string | null>(null);
+  const [partnerName, setPartnerName] = useState<string>('');
 
   useEffect(() => {
     if (user) {
@@ -27,25 +30,41 @@ export function Dashboard() {
       const { data: profileData } = await supabase
         .from('profiles')
         .select(`
+          full_name,
+          email,
           referred_by,
           referrer:profiles!referred_by(full_name, email)
         `)
         .eq('id', user?.id)
         .single();
 
+      // @ts-ignore
+      setPartnerName(profileData?.full_name || profileData?.email || '');
+
       if (profileData?.referrer) {
         // @ts-ignore
         setReferredBy(profileData.referrer.full_name || profileData.referrer.email);
       }
 
-      // Fetch leads
+      // Total de clientes (leads únicos do parceiro)
       const { data: leadsData } = await supabase
         .from('leads')
-        .select('*')
+        .select('id')
         .eq('partner_id', user?.id);
 
       const clientesAtivos = leadsData?.length || 0;
-      const produtosVendidos = (leadsData as any[])?.filter(l => l.status === 'Fechado').length || 0;
+
+      // Negócios fechados e valor total — da nova tabela lead_deals
+      const { data: dealsData } = await supabase
+        .from('lead_deals')
+        .select('status, value')
+        .eq('partner_id', user?.id);
+
+      const deals = (dealsData as any[]) || [];
+      const produtosVendidos = deals.filter(d => d.status === 'Fechado').length;
+      const emNegociacao = deals.filter(d => d.status === 'Em Negociação').length;
+      const valorFechado = deals.filter(d => d.status === 'Fechado')
+        .reduce((acc: number, d: any) => acc + Number(d.value), 0) || 0;
 
       // Fetch commissions
       const { data: commData } = await supabase
@@ -53,7 +72,6 @@ export function Dashboard() {
         .select('*')
         .eq('partner_id', user?.id);
 
-      // Sum commissions (you can filter by month if needed)
       const comissoesMes = (commData as any[])?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
 
       // Fetch network
@@ -68,7 +86,9 @@ export function Dashboard() {
         clientesAtivos,
         comissoesMes,
         parceirosRede,
-        produtosVendidos
+        produtosVendidos,
+        emNegociacao,
+        valorFechado,
       });
     } catch (error) {
       console.error('Erro ao buscar dados do dashboard:', error);
@@ -77,18 +97,27 @@ export function Dashboard() {
     }
   };
 
+  const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   const statCards = [
-    { name: 'Total de Clientes', value: stats.clientesAtivos.toString(), icon: Users },
-    { name: 'Comissões Geradas', value: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.comissoesMes), icon: DollarSign },
-    { name: 'Parceiros na Rede', value: stats.parceirosRede.toString(), icon: TrendingUp },
-    { name: 'Negócios Fechados', value: stats.produtosVendidos.toString(), icon: Package },
+    { name: 'Total de Clientes', value: stats.clientesAtivos.toString(), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { name: 'Em Negociação', value: stats.emNegociacao.toString(), icon: TrendingUp, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { name: 'Negócios Fechados', value: stats.produtosVendidos.toString(), icon: Package, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { name: 'Volume de Vendas', value: fmt(stats.valorFechado), icon: DollarSign, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { name: 'Comissões Geradas', value: fmt(stats.comissoesMes), icon: DollarSign, color: 'text-violet-600', bg: 'bg-violet-50' },
+    { name: 'Parceiros na Rede', value: stats.parceirosRede.toString(), icon: UserPlus, color: 'text-sky-600', bg: 'bg-sky-50' },
   ];
 
   return (
     <div className="space-y-6 pb-12">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Visão Geral</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {partnerName ? (
+              <>Olá, <span className="text-indigo-600">{partnerName.split(' ')[0]}</span>! 👋</>
+            ) : (
+              'Visão Geral'
+            )}
+          </h1>
           <p className="text-slate-500 mt-1">Acompanhe seus resultados e de sua rede de parceiros.</p>
         </div>
         {referredBy && (
@@ -101,7 +130,7 @@ export function Dashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {statCards.map((stat) => (
           <div key={stat.name} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between">
@@ -111,8 +140,8 @@ export function Dashboard() {
                   {loading ? '...' : stat.value}
                 </p>
               </div>
-              <div className="p-3 bg-indigo-50 rounded-lg">
-                <stat.icon className="w-6 h-6 text-indigo-600" />
+              <div className={`p-3 rounded-lg ${stat.bg}`}>
+                <stat.icon className={`w-6 h-6 ${stat.color}`} />
               </div>
             </div>
           </div>

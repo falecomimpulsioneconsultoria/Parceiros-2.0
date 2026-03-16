@@ -15,6 +15,7 @@ export interface Database {
           role: 'admin' | 'partner' | 'client'
           email: string | null
           full_name: string | null
+          phone: string | null
           status: string
           balance: number
           referred_by: string | null
@@ -25,6 +26,7 @@ export interface Database {
           role?: 'admin' | 'partner' | 'client'
           email?: string | null
           full_name?: string | null
+          phone?: string | null
           status?: string
           balance?: number
           referred_by?: string | null
@@ -35,6 +37,7 @@ export interface Database {
           role?: 'admin' | 'partner' | 'client'
           email?: string | null
           full_name?: string | null
+          phone?: string | null
           status?: string
           balance?: number
           referred_by?: string | null
@@ -49,6 +52,7 @@ export interface Database {
           description: string | null
           price: number
           commission_rate: number
+          commission_value: number
           status: string
           link: string | null
           created_at: string
@@ -59,6 +63,7 @@ export interface Database {
           description?: string | null
           price: number
           commission_rate: number
+          commission_value?: number
           status?: string
           link?: string | null
           created_at?: string
@@ -69,11 +74,52 @@ export interface Database {
           description?: string | null
           price?: number
           commission_rate?: number
+          commission_value?: number
           status?: string
           link?: string | null
           created_at?: string
         }
         Relationships: []
+      }
+      lead_deals: {
+        Row: {
+          id: string
+          lead_id: string
+          partner_id: string
+          product_id: string | null
+          status: string
+          value: number
+          payment_method: string | null
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          lead_id: string
+          partner_id: string
+          product_id?: string | null
+          status?: string
+          value?: number
+          payment_method?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          lead_id?: string
+          partner_id?: string
+          product_id?: string | null
+          status?: string
+          value?: number
+          payment_method?: string | null
+          notes?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "lead_deals_lead_id_fkey"; columns: ["lead_id"]; referencedRelation: "leads"; referencedColumns: ["id"] },
+          { foreignKeyName: "lead_deals_partner_id_fkey"; columns: ["partner_id"]; referencedRelation: "profiles"; referencedColumns: ["id"] },
+          { foreignKeyName: "lead_deals_product_id_fkey"; columns: ["product_id"]; referencedRelation: "products"; referencedColumns: ["id"] }
+        ]
       }
       leads: {
         Row: {
@@ -85,6 +131,7 @@ export interface Database {
           phone: string | null
           status: string
           value: number
+          payment_method: string | null
           created_at: string
         }
         Insert: {
@@ -96,6 +143,7 @@ export interface Database {
           phone?: string | null
           status?: string
           value?: number
+          payment_method?: string | null
           created_at?: string
         }
         Update: {
@@ -107,6 +155,7 @@ export interface Database {
           phone?: string | null
           status?: string
           value?: number
+          payment_method?: string | null
           created_at?: string
         }
         Relationships: [
@@ -131,6 +180,7 @@ export interface Database {
           id: string
           partner_id: string
           lead_id: string | null
+          deal_id: string | null
           product_id: string | null
           amount: number
           status: string
@@ -140,6 +190,7 @@ export interface Database {
           id?: string
           partner_id: string
           lead_id?: string | null
+          deal_id?: string | null
           product_id?: string | null
           amount: number
           status?: string
@@ -212,6 +263,66 @@ export interface Database {
             referencedColumns: ["id"]
           }
         ]
+      }
+      partner_products: {
+        Row: {
+          id: string
+          partner_id: string
+          product_id: string
+          redirect_phone: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          partner_id: string
+          product_id: string
+          redirect_phone?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          partner_id?: string
+          product_id?: string
+          redirect_phone?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_products_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      system_settings: {
+        Row: {
+          id: number
+          login_image_url: string | null
+          lead_stages: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          login_image_url?: string | null
+          lead_stages?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          login_image_url?: string | null
+          lead_stages?: Json | null
+          created_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
