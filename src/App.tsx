@@ -1,4 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+import theme from './theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
@@ -12,6 +15,8 @@ import { FunnelPage } from './pages/FunnelPage';
 import { CommissionsPage } from './pages/CommissionsPage';
 import { LeadCapturePage } from './pages/LeadCapturePage';
 import { RegisterPage } from './pages/RegisterPage';
+import { NetworkClientsPage } from './pages/NetworkClientsPage';
+import { ClientTrackingPage } from './pages/ClientTrackingPage';
 
 // Admin Pages
 import { AdminLayout } from './components/AdminLayout';
@@ -21,16 +26,21 @@ import { AdminUsers } from './pages/admin/AdminUsers';
 import { AdminProducts } from './pages/admin/AdminProducts';
 import { AdminWithdrawals } from './pages/admin/AdminWithdrawals';
 import { AdminSettings } from './pages/admin/AdminSettings';
+import { AdminCommissions } from './pages/admin/AdminCommissions';
+import { AdminBilling } from './pages/admin/AdminBilling';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/capture/:productId" element={<LeadCapturePage />} />
           <Route path="/ref/:partnerId" element={<RegisterPage />} />
+          <Route path="/acompanhar/:leadId" element={<ClientTrackingPage />} />
 
           {/* Partner App Routes */}
           <Route element={<ProtectedRoute allowedRoles={['partner']} />}>
@@ -39,6 +49,7 @@ export default function App() {
               <Route path="links" element={<LinksPage />} />
               <Route path="network" element={<NetworkPage />} />
               <Route path="clients" element={<ClientsPage />} />
+              <Route path="network-clients" element={<NetworkClientsPage />} />
               <Route path="funnel" element={<FunnelPage />} />
               <Route path="commissions" element={<CommissionsPage />} />
             </Route>
@@ -52,6 +63,8 @@ export default function App() {
               <Route path="clients" element={<ClientsPage />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="products" element={<AdminProducts />} />
+              <Route path="billing" element={<AdminBilling />} />
+              <Route path="commissions" element={<AdminCommissions />} />
               <Route path="withdrawals" element={<AdminWithdrawals />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
@@ -67,5 +80,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ThemeProvider>
   );
 }

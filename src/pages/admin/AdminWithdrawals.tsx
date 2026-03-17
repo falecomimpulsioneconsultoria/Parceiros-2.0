@@ -1,29 +1,107 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Filter, CheckCircle2, XCircle, Clock, Wallet, X, AlertCircle, FileText } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { supabase } from '../../lib/supabase';
 
-const mockWithdrawals = [
-  { id: 'W1', partner: 'João Silva', email: 'joao@email.com', amount: 'R$ 4.500,00', pixKey: 'joao@email.com (E-mail)', date: '15/03/2026', status: 'Pendente' },
-  { id: 'W2', partner: 'Maria Santos', email: 'maria@email.com', amount: 'R$ 850,00', pixKey: '11987654321 (Celular)', date: '14/03/2026', status: 'Pendente' },
-  { id: 'W3', partner: 'Ana Oliveira', email: 'ana@email.com', amount: 'R$ 1.200,00', pixKey: '123.456.789-00 (CPF)', date: '12/03/2026', status: 'Aprovado' },
-  { id: 'W4', partner: 'Pedro Costa', email: 'pedro@email.com', amount: 'R$ 300,00', pixKey: 'pedro@email.com (E-mail)', date: '10/03/2026', status: 'Rejeitado' },
-  { id: 'W5', partner: 'Carlos Ferreira', email: 'carlos@email.com', amount: 'R$ 2.100,00', pixKey: 'carlos.f@email.com (E-mail)', date: '09/03/2026', status: 'Aprovado' },
-];
-
-const stats = [
-  { label: 'Aguardando Pagamento', value: '12 solicitações', amount: 'R$ 15.350,00', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-  { label: 'Pagos Hoje', value: '5 solicitações', amount: 'R$ 3.200,00', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-  { label: 'Total Pago no Mês', value: '48 solicitações', amount: 'R$ 42.500,00', icon: Wallet, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-];
+// Removi o objeto estático e gerarei no componente
 
 export function AdminWithdrawals() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
-  const [selectedRequest, setSelectedRequest] = useState<typeof mockWithdrawals[0] | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
   const [modalType, setModalType] = useState<'approve' | 'reject' | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
 
-  const filteredWithdrawals = mockWithdrawals.filter(w => {
-    const matchesSearch = w.partner.toLowerCase().includes(searchTerm.toLowerCase()) || w.email.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    fetchWithdrawals();
+  }, []);
+
+  const fetchWithdrawals = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('withdrawals')
+        .select(`
+          *,
+          profiles:partner_id (full_name, email)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setWithdrawals(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar saques:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!selectedRequest) return;
+    setLoading(true);
+    try {
+      // 1. Atualizar status do saque
+      const { error: withError } = await supabase
+        .from('withdrawals')
+        .update({ status: 'Aprovado' })
+        .eq('id', selectedRequest.id);
+
+      if (withError) throw withError;
+
+      // 2. Lançar débito no extrato (commissions)
+      const { error: commError } = await supabase
+        .from('commissions')
+        .insert([{
+          partner_id: selectedRequest.partner_id,
+          amount: selectedRequest.amount,
+          status: 'Pago',
+          type: 'debit',
+          notes: `Resgate de Saldo (Solicitação #${selectedRequest.id.slice(0, 8)})`
+        }]);
+
+      if (commError) throw commError;
+
+      alert('Saque aprovado e débito lançado no extrato!');
+      fetchWithdrawals();
+      closeModal();
+    } catch (error) {
+      console.error('Erro ao aprovar saque:', error);
+      alert('Falha ao aprovar saque.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReject = async (reason: string) => {
+    if (!selectedRequest) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('withdrawals')
+        .update({ 
+          status: 'Rejeitado',
+          notes: reason 
+        })
+        .eq('id', selectedRequest.id);
+
+      if (error) throw error;
+
+      alert('Solicitação de saque rejeitada.');
+      fetchWithdrawals();
+      closeModal();
+    } catch (error) {
+      console.error('Erro ao rejeitar saque:', error);
+      alert('Falha ao rejeitar saque.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredWithdrawals = withdrawals.filter(w => {
+    const partnerName = w.profiles?.full_name || '';
+    const partnerEmail = w.profiles?.email || '';
+    const matchesSearch = partnerName.toLowerCase().includes(searchTerm.toLowerCase()) || partnerEmail.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'Todos' || w.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -37,7 +115,7 @@ export function AdminWithdrawals() {
     }
   };
 
-  const openModal = (request: typeof mockWithdrawals[0], type: 'approve' | 'reject') => {
+  const openModal = (request: any, type: 'approve' | 'reject') => {
     setSelectedRequest(request);
     setModalType(type);
   };
@@ -47,8 +125,12 @@ export function AdminWithdrawals() {
     setModalType(null);
   };
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  };
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-full mx-auto space-y-6 pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Gestão de Saques</h1>
@@ -56,20 +138,44 @@ export function AdminWithdrawals() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {stats.map((stat) => (
-          <div key={stat.label} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center">
-            <div className={cn("p-4 rounded-full mr-4", stat.bg)}>
-              <stat.icon className={cn("w-6 h-6", stat.color)} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500">{stat.label}</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{stat.amount}</p>
-              <p className="text-xs text-slate-400 mt-1">{stat.value}</p>
-            </div>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center">
+          <div className="p-4 rounded-full bg-amber-50 mr-4">
+            <Clock className="w-6 h-6 text-amber-600" />
           </div>
-        ))}
+          <div>
+            <p className="text-sm font-medium text-slate-500">Aguardando Pagamento</p>
+            <p className="text-2xl font-bold text-slate-900">
+              {formatCurrency(withdrawals.filter(w => w.status === 'Pendente').reduce((acc, curr) => acc + Number(curr.amount), 0))}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">{withdrawals.filter(w => w.status === 'Pendente').length} solicitações</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center">
+          <div className="p-4 rounded-full bg-emerald-50 mr-4">
+            <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-500">Pagos (Aprovados)</p>
+            <p className="text-2xl font-bold text-slate-900">
+              {formatCurrency(withdrawals.filter(w => w.status === 'Aprovado').reduce((acc, curr) => acc + Number(curr.amount), 0))}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">{withdrawals.filter(w => w.status === 'Aprovado').length} finalizados</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center">
+          <div className="p-4 rounded-full bg-indigo-50 mr-4">
+            <Wallet className="w-6 h-6 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-500">Total Solicitado</p>
+            <p className="text-2xl font-bold text-slate-900">
+              {formatCurrency(withdrawals.reduce((acc, curr) => acc + Number(curr.amount), 0))}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">Volume global de saques</p>
+          </div>
+        </div>
       </div>
 
       {/* Table Section */}
@@ -115,19 +221,27 @@ export function AdminWithdrawals() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {filteredWithdrawals.length > 0 ? (
+              {loading && withdrawals.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500 animate-pulse">
+                    Carregando solicitações...
+                  </td>
+                </tr>
+              ) : filteredWithdrawals.length > 0 ? (
                 filteredWithdrawals.map((request) => (
                   <tr key={request.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">{request.date}</td>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-slate-900">{request.partner}</div>
-                      <div className="text-xs text-slate-500">{request.email}</div>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {new Date(request.created_at).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-slate-700 font-medium">{request.pixKey}</div>
+                      <div className="font-medium text-slate-900">{request.profiles?.full_name || '—'}</div>
+                      <div className="text-xs text-slate-500">{request.profiles?.email || '—'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-slate-700 font-medium">{request.pix_key}</div>
                     </td>
                     <td className="px-6 py-4 text-right font-bold text-slate-900 whitespace-nowrap">
-                      {request.amount}
+                      {formatCurrency(request.amount)}
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium", getStatusStyle(request.status))}>
@@ -144,6 +258,7 @@ export function AdminWithdrawals() {
                             onClick={() => openModal(request, 'approve')}
                             className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
                             title="Aprovar Pagamento"
+                            disabled={loading}
                           >
                             <CheckCircle2 className="w-5 h-5" />
                           </button>
@@ -151,6 +266,7 @@ export function AdminWithdrawals() {
                             onClick={() => openModal(request, 'reject')}
                             className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors"
                             title="Rejeitar Pagamento"
+                            disabled={loading}
                           >
                             <XCircle className="w-5 h-5" />
                           </button>
@@ -195,15 +311,15 @@ export function AdminWithdrawals() {
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Parceiro:</span>
-                  <span className="font-medium text-slate-900">{selectedRequest.partner}</span>
+                  <span className="font-medium text-slate-900">{selectedRequest.profiles?.full_name}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Valor:</span>
-                  <span className="font-bold text-emerald-600">{selectedRequest.amount}</span>
+                  <span className="font-bold text-emerald-600">{formatCurrency(selectedRequest.amount)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Chave PIX:</span>
-                  <span className="font-medium text-slate-900">{selectedRequest.pixKey}</span>
+                  <span className="font-medium text-slate-900">{selectedRequest.pix_key}</span>
                 </div>
               </div>
 
@@ -225,6 +341,7 @@ export function AdminWithdrawals() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-slate-700">Motivo da Rejeição</label>
                   <textarea 
+                    id="rejectReason"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 min-h-[100px]" 
                     placeholder="Informe ao parceiro o motivo da rejeição (ex: Chave PIX inválida, suspeita de fraude...)"
                   ></textarea>
@@ -236,17 +353,27 @@ export function AdminWithdrawals() {
               <button 
                 onClick={closeModal}
                 className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+                disabled={loading}
               >
                 Cancelar
               </button>
               <button 
-                onClick={closeModal}
+                onClick={() => {
+                  if (modalType === 'approve') {
+                    handleApprove();
+                  } else {
+                    const reason = (document.getElementById('rejectReason') as HTMLTextAreaElement)?.value || '';
+                    handleReject(reason);
+                  }
+                }}
+                disabled={loading}
                 className={cn(
                   "px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors shadow-sm",
-                  modalType === 'approve' ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
+                  modalType === 'approve' ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700",
+                  loading && "opacity-50 cursor-not-allowed"
                 )}
               >
-                {modalType === 'approve' ? 'Confirmar Pagamento' : 'Confirmar Rejeição'}
+                {loading ? 'Processando...' : modalType === 'approve' ? 'Confirmar Pagamento' : 'Confirmar Rejeição'}
               </button>
             </div>
           </div>

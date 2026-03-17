@@ -108,10 +108,10 @@ export function LoginPage() {
               <LogIn className="w-7 h-7 text-white" />
             </div>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-              {isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'}
+              {isLogin ? 'Impulsione Consultoria' : 'Crie sua conta'}
             </h1>
             <p className="text-slate-500 mt-2 font-medium">
-              {isLogin ? 'Acesse o sistema e gerencie seus resultados' : 'Comece a usar agora mesmo'}
+              {isLogin ? 'Painel de Parceiros' : 'Comece a usar agora mesmo'}
             </p>
           </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Filter, Mail, Phone, UserPlus, CheckCircle2, X, Package, AlertCircle, CreditCard, Plus, Trash2, ShoppingBag, ChevronDown, ChevronRight, TrendingUp } from 'lucide-react';
+import { Users, Search, Filter, Mail, Phone, UserPlus, CheckCircle2, X, Package, AlertCircle, CreditCard, Plus, Trash2, ShoppingBag, ChevronDown, ChevronRight, TrendingUp, Clock, PlayCircle, PauseCircle, CheckCircle, XCircle, Info, ExternalLink, DollarSign, Link as LinkIcon, Copy, Edit3 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +21,9 @@ type DealFormRow = {
   value: string;
   payment_method: string;
   notes: string;
+  execution_status: string;
+  pending_description: string;
+  pending_document_url: string;
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -28,6 +31,14 @@ const STATUS_STYLE: Record<string, string> = {
   'Em Negociação': 'bg-amber-100 text-amber-700',
   'Lead':          'bg-blue-100 text-blue-700',
   'Perdido':       'bg-red-100 text-red-700',
+};
+
+const EXECUTION_STATUS_STYLE: Record<string, { color: string, icon: any }> = {
+  'A iniciar':    { color: 'bg-slate-100 text-slate-700',   icon: Clock },
+  'Em andamento': { color: 'bg-blue-100 text-blue-700',    icon: PlayCircle },
+  'Pendenciado':  { color: 'bg-amber-100 text-amber-700',   icon: PauseCircle },
+  'Concluido':    { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
+  'Cancelado':    { color: 'bg-red-100 text-red-700',      icon: XCircle },
 };
 
 type KanbanStage = {
@@ -61,9 +72,38 @@ export function ClientsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Client form — personal info only
-  const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    email: '', 
+    phone: '',
+    cpf: '',
+    rg: '',
+    birth_date: '',
+    gender: '',
+    address_zip_code: '',
+    address_street: '',
+    address_number: '',
+    address_complement: '',
+    address_neighborhood: '',
+    address_city: '',
+    address_state: ''
+  });
   // Deals sub-form rows
   const [dealRows, setDealRows] = useState<DealFormRow[]>([]);
+
+  // Deal Pop-up Modal states
+  const [isDealModalOpen, setIsDealModalOpen] = useState(false);
+  const [editingDealIdx, setEditingDealIdx] = useState<number | null>(null);
+  const [tempDeal, setTempDeal] = useState<DealFormRow>({
+    product_id: '',
+    status: 'Lead',
+    value: '0',
+    payment_method: '',
+    notes: '',
+    execution_status: 'A iniciar',
+    pending_description: '',
+    pending_document_url: ''
+  });
 
   useEffect(() => { if (user) loadData(); }, [user]);
 
@@ -89,6 +129,7 @@ export function ClientsPage() {
           profiles (full_name, email),
           lead_deals (
             id, status, value, payment_method, notes, product_id, created_at,
+            execution_status, pending_description, pending_document_url,
             products (name)
           )
         `)
@@ -100,32 +141,7 @@ export function ClientsPage() {
       if (error) throw error;
       setLeads((leadsData as Lead[]) || []);
 
-      // Clientes da rede: sub-parceiros indicados pelo usuário atual
-      if (!adminFlag) {
-        const { data: networkPartners } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('referred_by', user?.id)
-          .eq('role', 'partner');
-
-        if (networkPartners && networkPartners.length > 0) {
-          const networkPartnerIds = networkPartners.map((p: any) => p.id);
-          const { data: networkLeadsData } = await supabase
-            .from('leads')
-            .select(`
-              id, name, created_at,
-              lead_deals (
-                id, status, value, product_id, created_at,
-                products (name)
-              )
-            `)
-            .in('partner_id', networkPartnerIds)
-            .order('created_at', { ascending: false });
-          setNetworkLeads((networkLeadsData as Lead[]) || []);
-        } else {
-          setNetworkLeads([]);
-        }
-      }
+      setLeads((leadsData as Lead[]) || []);
 
       // Buscar estágios do sistema
       const { data: settingsData } = await supabase
@@ -135,7 +151,7 @@ export function ClientsPage() {
         .single();
       
       if (settingsData?.lead_stages) {
-        setStages(settingsData.lead_stages);
+        setStages(settingsData.lead_stages as unknown as KanbanStage[]);
       }
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
@@ -152,13 +168,16 @@ export function ClientsPage() {
       .eq('lead_id', leadId)
       .order('created_at', { ascending: true });
 
-    setDealRows((data || []).map((d: LeadDeal) => ({
+    setDealRows((data || []).map((d: any) => ({
       id: d.id,
       product_id: d.product_id || '',
       status: d.status,
       value: d.value?.toString() || '0',
       payment_method: d.payment_method || '',
       notes: d.notes || '',
+      execution_status: d.execution_status || 'A iniciar',
+      pending_description: d.pending_description || '',
+      pending_document_url: d.pending_document_url || '',
     })));
   };
 
@@ -172,12 +191,43 @@ export function ClientsPage() {
       let leadId = selectedClient?.id;
       if (selectedClient) {
         const { error } = await supabase.from('leads')
-          .update({ name: formData.name, email: formData.email, phone: formData.phone || null })
+          .update({ 
+            name: formData.name, 
+            email: formData.email, 
+            phone: formData.phone || null,
+            cpf: formData.cpf || null,
+            rg: formData.rg || null,
+            birth_date: formData.birth_date || null,
+            gender: formData.gender || null,
+            address_zip_code: formData.address_zip_code || null,
+            address_street: formData.address_street || null,
+            address_number: formData.address_number || null,
+            address_complement: formData.address_complement || null,
+            address_neighborhood: formData.address_neighborhood || null,
+            address_city: formData.address_city || null,
+            address_state: formData.address_state || null
+          })
           .eq('id', selectedClient.id);
         if (error) throw error;
       } else {
         const { data, error } = await supabase.from('leads')
-          .insert([{ partner_id: user?.id as string, name: formData.name, email: formData.email, phone: formData.phone || null }])
+          .insert([{ 
+            partner_id: user?.id as string, 
+            name: formData.name, 
+            email: formData.email, 
+            phone: formData.phone || null,
+            cpf: formData.cpf || null,
+            rg: formData.rg || null,
+            birth_date: formData.birth_date || null,
+            gender: formData.gender || null,
+            address_zip_code: formData.address_zip_code || null,
+            address_street: formData.address_street || null,
+            address_number: formData.address_number || null,
+            address_complement: formData.address_complement || null,
+            address_neighborhood: formData.address_neighborhood || null,
+            address_city: formData.address_city || null,
+            address_state: formData.address_state || null
+          }])
           .select().single();
         if (error) throw error;
         leadId = data.id;
@@ -211,6 +261,9 @@ export function ClientsPage() {
             product_id: row.product_id || null,
             value: parseFloat(row.value.replace(',', '.')) || 0,
             notes: row.notes || null,
+            execution_status: row.execution_status || 'A iniciar',
+            pending_description: row.pending_description || null,
+            pending_document_url: row.pending_document_url || null,
           };
           if (isAdmin) {
             upd.status = row.status;
@@ -267,6 +320,9 @@ export function ClientsPage() {
             value: parseFloat(row.value.replace(',', '.')) || 0,
             notes: row.notes || null,
             status: (!isAdmin && row.status === 'Fechado') ? 'Lead' : row.status,
+            execution_status: row.execution_status || 'A iniciar',
+            pending_description: row.pending_description || null,
+            pending_document_url: row.pending_document_url || null,
           };
           if (isAdmin) ins.payment_method = row.payment_method || null;
           await supabase.from('lead_deals').insert([ins]);
@@ -293,17 +349,79 @@ export function ClientsPage() {
   };
 
   const addDealRow = () =>
-    setDealRows(r => [...r, { product_id: '', status: 'Lead', value: '0', payment_method: '', notes: '' }]);
+    setDealRows(r => [...r, { 
+      product_id: '', 
+      status: 'Lead', 
+      value: '0', 
+      payment_method: '', 
+      notes: '',
+      execution_status: 'A iniciar',
+      pending_description: '',
+      pending_document_url: ''
+    }]);
 
   const updRow = (i: number, f: keyof DealFormRow, v: string) =>
     setDealRows(r => r.map((row, idx) => idx === i ? { ...row, [f]: v } : row));
 
-  const resetForm = () => { setFormData({ name: '', email: '', phone: '' }); setDealRows([]); setSelectedClient(null); };
+  const openDealModal = (deal?: DealFormRow, index?: number) => {
+    if (deal && typeof index === 'number') {
+      setTempDeal({ ...deal });
+      setEditingDealIdx(index);
+    } else {
+      setTempDeal({
+        product_id: '',
+        status: 'Lead',
+        value: '0',
+        payment_method: '',
+        notes: '',
+        execution_status: 'A iniciar',
+        pending_description: '',
+        pending_document_url: ''
+      });
+      setEditingDealIdx(null);
+    }
+    setIsDealModalOpen(true);
+  };
+
+  const saveTempDeal = () => {
+    if (editingDealIdx !== null) {
+      setDealRows(r => r.map((row, idx) => idx === editingDealIdx ? tempDeal : row));
+    } else {
+      setDealRows(r => [...r, tempDeal]);
+    }
+    setIsDealModalOpen(false);
+  };
+
+  const resetForm = () => { 
+    setFormData({ 
+      name: '', email: '', phone: '',
+      cpf: '', rg: '', birth_date: '', gender: '',
+      address_zip_code: '', address_street: '', address_number: '',
+      address_complement: '', address_neighborhood: '', address_city: '', address_state: ''
+    }); 
+    setDealRows([]); 
+    setSelectedClient(null); 
+  };
 
   const openAddModal = () => { resetForm(); setIsAddModalOpen(true); };
   const openEditModal = async (client: Lead) => {
     setSelectedClient(client);
-    setFormData({ name: client.name, email: client.email, phone: client.phone || '' });
+    setFormData({ 
+      name: client.name, 
+      email: client.email, 
+      phone: client.phone || '',
+      cpf: (client as any).cpf || '',
+      rg: (client as any).rg || '',
+      birth_date: (client as any).birth_date || '',
+      gender: (client as any).gender || '',
+      address_zip_code: (client as any).address_zip_code || '',
+      address_street: (client as any).address_street || '',
+      address_number: (client as any).address_number || '',
+      address_complement: (client as any).address_complement || '',
+      address_neighborhood: (client as any).address_neighborhood || '',
+      address_city: (client as any).address_city || '',
+      address_state: (client as any).address_state || ''
+    });
     await loadDealsForClient(client.id);
     setIsEditModalOpen(true);
   };
@@ -321,7 +439,8 @@ export function ClientsPage() {
       (lead.lead_deals || []).map(deal => ({
         ...deal,
         lead_name: lead.name,
-        lead_id: lead.id
+        lead_id: lead.id,
+        partner_id: lead.partner_id // Garante que o ID do parceiro seja repassado corretamente
       }))
     ).filter(deal => 
       deal.lead_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -338,6 +457,9 @@ export function ClientsPage() {
       if (!deal || !lead) return;
 
       const previousStatus = deal.status;
+      if (!isAdmin && newStatus === 'Fechado') {
+        throw new Error('Apenas administradores podem fechar negócios.');
+      }
       const isClosingDeal = isAdmin && newStatus === 'Fechado' && previousStatus !== 'Fechado';
 
       const { error } = await supabase
@@ -381,38 +503,126 @@ export function ClientsPage() {
       await loadData();
       setMessage({ type: 'success', text: 'Status atualizado!' });
       setTimeout(() => setMessage(null), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao atualizar status:', err);
-      setMessage({ type: 'error', text: 'Erro ao atualizar status.' });
+      setMessage({ type: 'error', text: err.message || 'Erro ao atualizar status.' });
+    }
+  };
+
+  const copyTrackingLink = (leadId: string) => {
+    const link = `${window.location.origin}/acompanhar/${leadId}`;
+    navigator.clipboard.writeText(link);
+    setMessage({ type: 'success', text: 'Link de acompanhamento copiado!' });
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleFaturar = async (deal: LeadDeal, leadId: string, partnerId: string) => {
+    try {
+      setLoading(true);
+      if (!partnerId) {
+        throw new Error('ID do parceiro não encontrado para este negócio.');
+      }
+
+      const { data: prodData } = await supabase
+        .from('products')
+        .select('commission_value')
+        .eq('id', deal.product_id || '')
+        .single();
+
+      const commissionAmount = prodData?.commission_value || 0;
+
+      const { error: commError } = await supabase
+        .from('commissions')
+        .insert([{
+          partner_id: partnerId,
+          lead_id: leadId,
+          deal_id: deal.id,
+          product_id: deal.product_id,
+          amount: commissionAmount,
+          status: 'Disponível',
+          type: 'credit'
+        }]);
+
+      if (commError) throw commError;
+      
+      alert('Negócio faturado com sucesso!');
+      await loadData();
+    } catch (error: any) {
+      console.error('Erro ao faturar:', error);
+      alert('Erro ao faturar: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="max-w-full mx-auto space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Meus Clientes</h1>
-          <p className="text-slate-500 mt-1">Gerencie sua carteira de clientes e acompanhe as negociações.</p>
+          <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Meus Clientes</h1>
+          <p className="text-slate-500 mt-1 flex items-center gap-2 text-sm">
+            <Users className="w-4 h-4 text-indigo-500/70" />
+            Gerenciamento simplificado da sua carteira comercial.
+          </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+          <div className="flex items-center bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
             <button onClick={() => setViewMode('list')}
-              className={cn("px-3 py-1.5 text-xs font-medium rounded-md transition-all", 
-                viewMode === 'list' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}>
+              className={cn("px-4 py-2 text-xs font-semibold rounded-lg transition-all", 
+                viewMode === 'list' ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50")}>
               Lista
             </button>
             <button onClick={() => setViewMode('kanban')}
-              className={cn("px-3 py-1.5 text-xs font-medium rounded-md transition-all", 
-                viewMode === 'kanban' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}>
+              className={cn("px-4 py-2 text-xs font-semibold rounded-lg transition-all", 
+                viewMode === 'kanban' ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50")}>
               Kanban
             </button>
           </div>
-          <button onClick={openAddModal} className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm whitespace-nowrap">
+          <button onClick={openAddModal} className="inline-flex items-center justify-center px-5 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-all shadow-sm active:scale-[0.98] text-sm whitespace-nowrap">
             <UserPlus className="w-5 h-5 mr-2" />Novo Cliente
           </button>
+        </div>
+      </div>
+
+      {/* Quick Stats Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 group">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50/50 flex items-center justify-center group-hover:bg-indigo-600 transition-colors duration-300">
+            <Users className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total de Clientes</p>
+            <p className="text-xl font-semibold text-slate-900">{leads.length}</p>
+          </div>
+        </div>
+        
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 group">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50/50 flex items-center justify-center group-hover:bg-amber-600 transition-colors duration-300">
+            <TrendingUp className="w-6 h-6 text-amber-600 group-hover:text-white transition-colors" />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Negócios Ativos</p>
+            <p className="text-xl font-semibold text-slate-900">
+              {leads.reduce((acc, lead) => acc + (lead.lead_deals?.filter(d => d.status !== 'Fechado' && d.status !== 'Perdido').length || 0), 0)}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 group">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50/50 flex items-center justify-center group-hover:bg-emerald-600 transition-colors duration-300">
+            <DollarSign className="w-6 h-6 text-emerald-600 group-hover:text-white transition-colors" />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Valor em Pipeline</p>
+            <p className="text-xl font-semibold text-slate-900">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                leads.reduce((acc, lead) => acc + (lead.lead_deals?.filter(d => d.status !== 'Fechado' && d.status !== 'Perdido').reduce((s, deal) => s + (parseFloat(deal.value) || 0), 0) || 0), 0)
+              )}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -426,19 +636,21 @@ export function ClientsPage() {
 
       {/* Clients Selection (List or Kanban) */}
       {viewMode === 'list' ? (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-slate-900">
-              Lista de Clientes <span className="ml-2 text-sm font-normal text-slate-400">({leads.length})</span>
-            </h2>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input type="text" placeholder="Buscar cliente..." value={searchTerm}
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-slate-50 bg-slate-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-1 h-5 bg-indigo-500 rounded-full" />
+              <h2 className="text-lg font-semibold text-slate-800">Carteira de Clientes</h2>
+              <span className="text-[10px] font-semibold text-slate-400 bg-white border border-slate-100 px-2 py-0.5 rounded-full">{leads.length}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 sm:w-80 group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
+                <input type="text" placeholder="Pesquisar por nome ou e-mail..." value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 w-full" />
+                  className="pl-10 pr-4 py-2 bg-white border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/30 w-full transition-all" />
               </div>
-              <button className="p-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
+              <button className="p-2 bg-white border border-slate-100 text-slate-400 rounded-xl hover:bg-slate-50 hover:text-slate-600 transition-all shadow-sm active:scale-[0.95]">
                 <Filter className="w-5 h-5" />
               </button>
             </div>
@@ -457,15 +669,15 @@ export function ClientsPage() {
               </div>
             ) : (
               <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                <thead className="bg-slate-50/50 text-slate-400 font-medium border-b border-slate-100">
                   <tr>
-                    <th className="px-4 py-3 w-8"></th>
-                    <th className="px-4 py-3">Cliente</th>
-                    <th className="px-4 py-3">Contato</th>
-                    {isAdmin && <th className="px-4 py-3">Parceiro</th>}
-                    <th className="px-4 py-3">Negócios</th>
-                    <th className="px-4 py-3">Cadastro</th>
-                    <th className="px-4 py-3"></th>
+                    <th className="px-4 py-3.5 w-8"></th>
+                    <th className="px-4 py-3.5">Cliente</th>
+                    <th className="px-4 py-3.5">Contato</th>
+                    {isAdmin && <th className="px-4 py-3.5">Parceiro</th>}
+                    <th className="px-4 py-3.5">Negócios</th>
+                    <th className="px-4 py-3.5">Cadastro</th>
+                    <th className="px-4 py-3.5"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -497,16 +709,33 @@ export function ClientsPage() {
                             </td>
                           )}
                           <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-col gap-1.5">
                               {deals.length === 0 ? (
                                 <span className="text-xs text-slate-400">Nenhum negócio</span>
-                              ) : deals.slice(0, 3).map((d) => (
-                                <span key={d.id} className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium", STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700')}>
-                                  {d.status}
-                                </span>
+                              ) : deals.slice(0, 2).map((d) => (
+                                <div key={d.id} className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-tight", STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700')}>
+                                      {d.status}
+                                    </span>
+                                    {d.status === 'Fechado' && (
+                                      <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase border", 
+                                        EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100')}>
+                                        {(() => {
+                                          const Icon = EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.icon || Clock;
+                                          return <Icon className="w-2.5 h-2.5" />;
+                                        })()}
+                                        {d.execution_status || 'A iniciar'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-slate-500 font-medium truncate max-w-[120px]">
+                                    {d.products?.name || 'Produto'}
+                                  </span>
+                                </div>
                               ))}
-                              {deals.length > 3 && (
-                                <span className="text-xs text-slate-400">+{deals.length - 3} mais</span>
+                              {deals.length > 2 && (
+                                <span className="text-[10px] text-slate-400">+{deals.length - 2} mais</span>
                               )}
                             </div>
                           </td>
@@ -514,51 +743,116 @@ export function ClientsPage() {
                             {new Date(client.created_at).toLocaleDateString('pt-BR')}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button onClick={() => openEditModal(client)}
-                              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline">
-                              Editar
-                            </button>
+                            {isAdmin || deals.every(d => d.status !== 'Fechado') ? (
+                              <button onClick={() => openEditModal(client)}
+                                className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline">
+                                Editar
+                              </button>
+                            ) : (
+                              <span className="text-xs font-medium text-slate-300">Somente Leitura</span>
+                            )}
                           </td>
                         </tr>
 
                         {/* Expanded deals rows */}
                         {isExpanded && (
-                          <tr className="border-b border-slate-100 bg-indigo-50/30">
-                            <td colSpan={isAdmin ? 7 : 6} className="px-6 py-3">
-                              {deals.length === 0 ? (
-                                <p className="text-xs text-slate-400 py-2">Este cliente ainda não tem negócios. <button onClick={() => openEditModal(client)} className="text-indigo-600 font-medium underline">Adicionar negócio</button></p>
-                              ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-xs">
-                                    <thead>
-                                      <tr className="text-slate-500 font-medium border-b border-indigo-100">
-                                        <th className="pb-2 text-left pr-6">Produto</th>
-                                        <th className="pb-2 text-left pr-6">Status</th>
-                                        <th className="pb-2 text-left pr-6">Valor</th>
-                                        {isAdmin && <th className="pb-2 text-left pr-6">Pagamento</th>}
-                                        <th className="pb-2 text-left">Observações</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-indigo-50">
-                                      {deals.map((d) => (
-                                        <tr key={d.id} className="text-slate-700">
-                                          <td className="py-2 pr-6 font-medium">{d.products?.name || <span className="text-slate-400">—</span>}</td>
-                                          <td className="py-2 pr-6">
-                                            <span className={cn("px-2 py-0.5 rounded-full font-medium", STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700')}>
-                                              {d.status}
-                                            </span>
-                                          </td>
-                                          <td className="py-2 pr-6">
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(d.value)}
-                                          </td>
-                                          {isAdmin && <td className="py-2 pr-6">{d.payment_method || <span className="text-slate-400">—</span>}</td>}
-                                          <td className="py-2 text-slate-500">{d.notes || <span className="text-slate-400">—</span>}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
+                          <tr className="bg-slate-50/50">
+                            <td colSpan={isAdmin ? 7 : 6} className="px-8 py-8">
+                              <div className="animate-in slide-in-from-top-2 duration-300 ease-out">
+                                <div className="w-full">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h5 className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                      <ShoppingBag className="w-4 h-4 text-indigo-500/60" /> Histórico de Negociações
+                                    </h5>
+                                    <button onClick={() => openEditModal(client)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 bg-indigo-50/50 px-3 py-1.5 rounded-lg transition-colors border border-indigo-100/50">
+                                      <Plus className="w-3.5 h-3.5" />Gerenciar Negócios
+                                    </button>
+                                  </div>
+
+                                  {deals.length === 0 ? (
+                                    <div className="bg-slate-50/50 rounded-2xl border border-dashed border-slate-100 p-8 text-center">
+                                      <Package className="w-8 h-8 text-slate-200 mx-auto mb-3" />
+                                      <p className="text-sm text-slate-400 font-medium">Nenhum negócio registrado ainda.</p>
+                                    </div>
+                                  ) : (
+                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                      <table className="w-full text-xs text-left">
+                                        <thead>
+                                          <tr className="bg-slate-50/50 text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-100">
+                                            <th className="px-5 py-3.5">Produto / Serviço</th>
+                                            <th className="px-5 py-3.5">Status Comercial</th>
+                                            <th className="px-5 py-3.5">Execução</th>
+                                            <th className="px-5 py-3.5">Valor Bruto</th>
+                                            {isAdmin && <th className="px-5 py-3.5">Pagamento</th>}
+                                            <th className="px-5 py-3.5 text-right">Ação</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                          {deals.map((d) => (
+                                            <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
+                                              <td className="px-5 py-4">
+                                                <div className="font-semibold text-slate-800 tracking-tight">{d.products?.name || '—'}</div>
+                                                <div className="text-[10px] text-slate-400 mt-1">{d.notes || 'Sem observações'}</div>
+                                              </td>
+                                              <td className="px-5 py-4">
+                                                <span className={cn("inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-tighter border", 
+                                                  STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700 border-slate-100')}>
+                                                  {d.status}
+                                                </span>
+                                              </td>
+                                              <td className="px-5 py-4">
+                                                <div className="flex items-center gap-2">
+                                                  <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter border-2 shadow-sm", 
+                                                    EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-200')}>
+                                                    {(() => {
+                                                      const Icon = EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.icon || Clock;
+                                                      return <Icon className="w-3.5 h-3.5" />;
+                                                    })()}
+                                                    {d.execution_status || 'A iniciar'}
+                                                  </span>
+                                                  {d.execution_status === 'Pendenciado' && d.pending_description && (
+                                                    <div className="group/info relative">
+                                                      <Info className="w-4 h-4 text-amber-500 cursor-help transition-transform hover:scale-110" />
+                                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 bg-slate-900 text-white text-[11px] rounded-xl opacity-0 group-hover/info:opacity-100 transition-all pointer-events-none z-[70] shadow-2xl">
+                                                        <p className="font-black mb-1.5 text-amber-400 uppercase tracking-widest text-[9px]">Motivo da Pendência</p>
+                                                        <p className="font-medium text-slate-300 leading-relaxed">{d.pending_description}</p>
+                                                        {d.pending_document_url && (
+                                                          <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+                                                            <span className="text-white/40">Anexo disponível</span>
+                                                            <a href={d.pending_document_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 pointer-events-auto flex items-center gap-1 font-bold">
+                                                              Ver Doc <ExternalLink className="w-3 h-3" />
+                                                            </a>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </td>
+                                              <td className="px-5 py-4 font-black text-slate-900 tabular-nums">
+                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(d.value)}
+                                              </td>
+                                              {isAdmin && <td className="px-5 py-4 text-slate-500 font-bold text-[11px]">{d.payment_method || '—'}</td>}
+                                              <td className="px-5 py-4 text-right">
+                                                 <div className="flex items-center justify-end gap-2">
+                                                  <button onClick={() => copyTrackingLink(client.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white border border-slate-100" title="Link de Acompanhamento">
+                                                    <LinkIcon className="w-4 h-4" />
+                                                  </button>
+                                                  {isAdmin && d.status === 'Fechado' && (
+                                                    <button onClick={() => handleFaturar(d, client.id, client.partner_id)} className="px-3 py-1.5 bg-indigo-600/90 text-white rounded-lg text-[10px] font-semibold hover:bg-indigo-700 transition-all shadow-sm uppercase tracking-tighter">
+                                                      Faturar
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                             </td>
                           </tr>
                         )}
@@ -572,16 +866,17 @@ export function ClientsPage() {
         </div>
       ) : (
         <div className="flex flex-col h-full space-y-4">
-           {/* Kanban Toolbar */}
-           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">
-              Kanban de Negócios <span className="ml-2 text-sm font-normal text-slate-400">({allDeals.length})</span>
-            </h2>
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input type="text" placeholder="Filtrar negócios..." value={searchTerm}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-1 h-5 bg-indigo-500 rounded-full" />
+              <h2 className="text-lg font-semibold text-slate-800">Pipeline de Negócios</h2>
+              <span className="text-[10px] font-semibold text-slate-400 bg-white border border-slate-100 px-2 py-0.5 rounded-full">{allDeals.length}</span>
+            </div>
+            <div className="relative w-full sm:w-80 group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
+              <input type="text" placeholder="Filtrar por cliente ou produto..." value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 w-full" />
+                className="pl-10 pr-4 py-2 bg-white border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/30 w-full transition-all shadow-sm" />
             </div>
           </div>
 
@@ -589,51 +884,102 @@ export function ClientsPage() {
             {stages.map(stage => {
               const stageDeals = allDeals.filter(d => d.status === (stage.id === 'negociacao' ? 'Em Negociação' : stage.name));
               return (
-                <div key={stage.id} className="flex-shrink-0 w-72 flex flex-col bg-slate-100/50 rounded-xl border border-slate-200 max-h-[70vh]">
-                  <div className="p-3 flex items-center justify-between border-b border-slate-200">
-                    <div className="flex items-center gap-2">
-                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
-                       <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">{stage.name}</h3>
+                <div key={stage.id} className="flex-shrink-0 w-80 flex flex-col bg-slate-50/50 rounded-2xl border border-slate-100 max-h-[75vh] shadow-sm">
+                  <div className="p-4 border-b border-slate-100 bg-white/50 rounded-t-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
+                        <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.15em]">{stage.name}</h3>
+                      </div>
+                      <span className="text-[10px] font-semibold bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg border border-slate-100">{stageDeals.length}</span>
                     </div>
-                    <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{stageDeals.length}</span>
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 tracking-tight">
+                      <span className="text-slate-400 font-medium text-[10px]">Total:</span>
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                        stageDeals.reduce((sum, d) => sum + (Number(d.value) || 0), 0)
+                      )}
+                    </div>
                   </div>
 
-                  <div className="p-2 space-y-3 overflow-y-auto">
+                  <div className="p-3 space-y-4 overflow-y-auto custom-scrollbar">
                     {stageDeals.map(deal => (
-                      <div key={deal.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm hover:shadow-md transition-shadow group">
-                        <div className="flex items-start justify-between mb-2">
-                          <p className="text-xs font-bold text-slate-900 line-clamp-1">{deal.lead_name}</p>
-                          <button onClick={() => {
-                            const l = leads.find(x => x.id === deal.lead_id);
-                            if (l) openEditModal(l);
-                          }} className="p-1 opacity-0 group-hover:opacity-100 hover:bg-slate-100 rounded text-indigo-600 transition-all">
-                             <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                            <Package className="w-3.5 h-3.5" />
-                            <span className="line-clamp-1">{deal.products?.name || 'Sem Produto'}</span>
+                      <div key={deal.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 hover:-translate-y-0.5 transition-all group relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: stage.color }} />
+                        
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-wider mb-0.5">Cliente</p>
+                            <p className="text-sm font-semibold text-slate-700 line-clamp-1 leading-tight">{deal.lead_name}</p>
                           </div>
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-xs font-bold text-slate-800">
-                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deal.value)}
+                          <div className="flex items-center gap-1 translate-x-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyTrackingLink(deal.lead_id);
+                              }}
+                              className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                              title="Copiar Link"
+                            >
+                              <LinkIcon className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => {
+                              const l = leads.find(x => x.id === deal.lead_id);
+                              if (l) openEditModal(l);
+                            }} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all">
+                               <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 bg-slate-50/50 p-2 rounded-xl border border-slate-100/50">
+                            <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center shadow-sm border border-slate-100">
+                              <Package className="w-4 h-4 text-indigo-500/70" />
+                            </div>
+                            <span className="text-[11px] font-medium text-slate-500 line-clamp-1">{deal.products?.name || 'Sem Produto'}</span>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-wider">Valor do Negócio</p>
+                              <span className="text-sm font-semibold text-slate-700 tabular-nums">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deal.value)}
+                              </span>
+                            </div>
+                            
+                            <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-semibold uppercase tracking-tighter border shadow-sm", 
+                              EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100')}>
+                              {deal.execution_status || 'A iniciar'}
                             </span>
                           </div>
                           
-                          <div className="pt-2">
-                            <select 
-                              value={deal.status}
-                              onChange={(e) => updateDealStatus(deal.id, e.target.value)}
-                              disabled={!isAdmin && deal.status === 'Fechado'}
-                              className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-medium text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/20"
-                            >
-                              {stages.map(s => (
-                                <option key={s.id} value={s.id === 'negociacao' ? 'Em Negociação' : s.name}>
-                                  Mover para: {s.name}
-                                </option>
-                              ))}
-                            </select>
+                          <div className={cn("pt-2 space-y-2", !isAdmin && deal.status === 'Fechado' && "hidden")}>
+                            <div className="relative group/select">
+                              <select 
+                                value={deal.status}
+                                onChange={(e) => updateDealStatus(deal.id, !isAdmin && e.target.value === 'Fechado' ? deal.status : e.target.value)}
+                                className="w-full appearance-none bg-slate-50/50 border border-slate-100 hover:border-indigo-200 rounded-xl px-3 py-2 text-[10px] font-semibold text-slate-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all text-center uppercase tracking-widest cursor-pointer"
+                              >
+                                {stages.filter(s => isAdmin || (s.id !== 'Fechado' && s.name !== 'Fechado')).map(s => (
+                                  <option key={s.id} value={s.id === 'negociacao' ? 'Em Negociação' : s.name}>
+                                    MOVER: {s.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300 group-hover/select:text-indigo-400 transition-colors">
+                                <ChevronDown className="w-3 h-3" />
+                              </div>
+                            </div>
+
+                            {isAdmin && deal.status === 'Fechado' && (
+                              <button 
+                                onClick={() => handleFaturar(deal, deal.lead_id, deal.partner_id)}
+                                className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-[10px] font-semibold hover:bg-black transition-all shadow-sm uppercase tracking-[0.2em] flex items-center justify-center gap-2 group/btn"
+                              >
+                                <TrendingUp className="w-3.5 h-3.5 text-indigo-400/80 group-hover:scale-110 transition-transform" />
+                                Faturar Proposta
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -652,299 +998,422 @@ export function ClientsPage() {
       )}
 
 
-      {/* Network Leads Section — for partners only */}
-      {!isAdmin && networkLeads.length > 0 && (
-        <div className="mt-12 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center gap-3 px-1">
-            <div className="p-2 bg-indigo-50 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Clientes da Minha Rede</h2>
-              <p className="text-sm text-slate-500">Visualize os clientes e negócios cadastrados pelos parceiros que você indicou.</p>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-200">
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-12"></th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Cliente</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Negócios</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {networkLeads.map((lead) => {
-                  const isExpanded = expandedRows.has(lead.id);
-                  return (
-                    <React.Fragment key={lead.id}>
-                      <tr className="hover:bg-slate-50/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <button onClick={() => toggleExpand(lead.id)}
-                            className="p-1 hover:bg-white rounded-md transition-colors shadow-sm border border-transparent hover:border-slate-200">
-                            {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className="font-semibold text-slate-900">{lead.name}</p>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex -space-x-2">
-                            {lead.lead_deals?.slice(0, 3).map((d, i) => (
-                              <div key={i} title={d.products?.name} className="w-7 h-7 rounded-full bg-indigo-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-indigo-600 shadow-sm">
-                                {d.products?.name?.charAt(0) || 'P'}
-                              </div>
-                            ))}
-                            {(lead.lead_deals?.length || 0) > 3 && (
-                              <div className="w-7 h-7 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm">
-                                +{(lead.lead_deals?.length || 0) - 3}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-sm text-slate-500">{new Date(lead.created_at).toLocaleDateString('pt-BR')}</span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <span className="text-xs font-medium text-slate-400 italic">Somente Leitura</span>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr className="bg-slate-50/30">
-                          <td colSpan={5} className="px-6 py-4">
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-inner overflow-hidden animate-in slide-in-from-top-2 duration-200">
-                              <table className="w-full text-sm">
-                                <thead className="bg-slate-50 text-xs text-slate-500 font-medium">
-                                  <tr>
-                                    <th className="px-4 py-2 text-left">Produto</th>
-                                    <th className="px-4 py-2 text-left">Status</th>
-                                    <th className="px-4 py-2 text-right">Valor</th>
-                                    <th className="px-4 py-2 text-left">Data</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {lead.lead_deals?.map((deal) => (
-                                    <tr key={deal.id}>
-                                      <td className="px-4 py-3 font-medium text-slate-700">{deal.products?.name || '—'}</td>
-                                      <td className="px-4 py-3">
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                          deal.status === 'Fechado' ? 'bg-emerald-100 text-emerald-700' :
-                                          deal.status === 'Em Negociação' ? 'bg-amber-100 text-amber-700' :
-                                          deal.status === 'Perdido' ? 'bg-red-100 text-red-700' :
-                                          'bg-slate-100 text-slate-700'
-                                        }`}>
-                                          {deal.status}
-                                        </span>
-                                      </td>
-                                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deal.value)}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-400 text-xs">
-                                        {new Date(deal.created_at).toLocaleDateString('pt-BR')}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                  {(!lead.lead_deals || lead.lead_deals.length === 0) && (
-                                    <tr>
-                                      <td colSpan={4} className="px-4 py-8 text-center text-slate-400 italic">Nenhum negócio registrado.</td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Add/Edit Client Modal */}
       {(isAddModalOpen || isEditModalOpen) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h3 className="text-lg font-semibold text-slate-900">
-                {isEditModalOpen ? 'Detalhes do Cliente' : 'Adicionar Novo Cliente'}
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-[4px] animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2rem] shadow-xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-2 duration-300 border border-slate-100">
+            <div className="flex items-center justify-between p-8 border-b border-slate-100 bg-slate-50/20">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-600/90 rounded-2xl flex items-center justify-center shadow-sm">
+                  <UserPlus className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-900 tracking-tight">
+                    {isEditModalOpen ? 'Gestão de Cliente' : 'Novo Alinhamento Comercial'}
+                  </h3>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-0.5">
+                    {isEditModalOpen ? 'Atualize as informações do parceiro' : 'Preencha os dados do novo lead estratégico'}
+                  </p>
+                </div>
+              </div>
               <button onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100">
-                <X className="w-5 h-5" />
+                className="text-slate-300 hover:text-slate-900 p-2 rounded-xl hover:bg-white hover:shadow-sm transition-all">
+                <X className="w-6 h-6" />
               </button>
             </div>
 
             <form onSubmit={handleSaveLead}>
-              <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
-
+              <div className="p-8 space-y-10 max-h-[70vh] overflow-y-auto custom-scrollbar">
                 {/* Personal info */}
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-indigo-600" />Informações Pessoais
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[
-                      { label: 'Nome Completo', field: 'name', type: 'text', required: true },
-                      { label: 'E-mail', field: 'email', type: 'email', required: true },
-                      { label: 'Telefone / WhatsApp', field: 'phone', type: 'tel', required: false },
-                    ].map(({ label, field, type, required }) => (
-                      <div key={field} className="space-y-1.5">
-                        <label className="text-xs font-medium text-slate-500">{label}</label>
-                        <input type={type} required={required}
-                          value={(formData as any)[field]}
-                          onChange={e => setFormData({ ...formData, [field]: e.target.value })}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                <div className="space-y-10">
+                  <section>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-1 h-4 bg-indigo-600 rounded-full" />
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Informações de Contato</h4>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {[
+                        { label: 'Nome Completo', field: 'name', type: 'text', placeholder: 'Ex: João Silva' },
+                        { label: 'E-mail Corporativo', field: 'email', type: 'email', placeholder: 'joao@empresa.com' },
+                        { label: 'WhatsApp / Celular', field: 'phone', type: 'tel', placeholder: '(00) 00000-0000' },
+                      ].map(({ label, field, type, placeholder }) => (
+                        <div key={field} className="space-y-1.5">
+                          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">{label}</label>
+                          <input type={type} required={field !== 'phone'} placeholder={placeholder}
+                            value={(formData as any)[field]}
+                            onChange={e => setFormData({ ...formData, [field]: e.target.value })}
+                            className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all placeholder:text-slate-300" />
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-1 h-4 bg-emerald-500 rounded-full" />
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Documentação Pessoal</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">CPF</label>
+                        <input type="text" placeholder="000.000.000-00"
+                          value={formData.cpf}
+                          onChange={e => setFormData({ ...formData, cpf: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
                       </div>
-                    ))}
-                  </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">RG</label>
+                        <input type="text" placeholder="00.000.000-0"
+                          value={formData.rg}
+                          onChange={e => setFormData({ ...formData, rg: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Data de Nascimento</label>
+                        <input type="date"
+                          value={formData.birth_date}
+                          onChange={e => setFormData({ ...formData, birth_date: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Gênero</label>
+                        <select
+                          value={formData.gender}
+                          onChange={e => setFormData({ ...formData, gender: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="">Selecione...</option>
+                          <option value="Masculino">Masculino</option>
+                          <option value="Feminino">Feminino</option>
+                          <option value="Outro">Outro</option>
+                          <option value="Prefiro não dizer">Prefiro não dizer</option>
+                        </select>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-1 h-4 bg-amber-500 rounded-full" />
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Endereço Residencial</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-6 gap-6">
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">CEP</label>
+                        <input type="text" placeholder="00000-000"
+                          value={formData.address_zip_code}
+                          onChange={e => setFormData({ ...formData, address_zip_code: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-3">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Logradouro</label>
+                        <input type="text" placeholder="Nome da rua ou avenida"
+                          value={formData.address_street}
+                          onChange={e => setFormData({ ...formData, address_street: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Nº</label>
+                        <input type="text" placeholder="Ex: 123"
+                          value={formData.address_number}
+                          onChange={e => setFormData({ ...formData, address_number: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Complemento</label>
+                        <input type="text" placeholder="Apto, Bloco, etc."
+                          value={formData.address_complement}
+                          onChange={e => setFormData({ ...formData, address_complement: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Bairro</label>
+                        <input type="text" placeholder="Ex: Centro"
+                          value={formData.address_neighborhood}
+                          onChange={e => setFormData({ ...formData, address_neighborhood: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Cidade</label>
+                        <input type="text"
+                          value={formData.address_city}
+                          onChange={e => setFormData({ ...formData, address_city: e.target.value })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                      </div>
+                      <div className="space-y-1.5 text-center">
+                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">UF</label>
+                        <input type="text" maxLength={2} placeholder="SP"
+                          value={formData.address_state}
+                          onChange={e => setFormData({ ...formData, address_state: e.target.value.toUpperCase() })}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all text-center uppercase" />
+                      </div>
+                    </div>
+                  </section>
                 </div>
 
                 <hr className="border-slate-100" />
 
-                {/* Deals sub-form as a table */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                      <ShoppingBag className="w-4 h-4 text-indigo-600" />
-                      Negócios / Produtos
-                      <span className="ml-1 text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{dealRows.length}</span>
-                    </h4>
-                    <button type="button" onClick={addDealRow}
-                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-100">
-                      <Plus className="w-3.5 h-3.5 mr-1" />Novo Negócio
+                {/* Business History area refined */}
+                <section className="mt-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-1 h-4 bg-indigo-900/60 rounded-full" />
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        Histórico de Produtos / Serviços
+                        <span className="text-[10px] font-semibold text-white bg-indigo-500 px-2 py-0.5 rounded-md">{dealRows.length}</span>
+                      </h4>
+                    </div>
+                    <button type="button" onClick={() => openDealModal()}
+                      className="inline-flex items-center px-4 py-2 text-[11px] font-semibold text-indigo-600 bg-indigo-50/50 rounded-xl hover:bg-indigo-600 hover:text-white transition-all border border-indigo-100/50 uppercase tracking-tighter shadow-sm">
+                      <Plus className="w-4 h-4 mr-1.5" />Adicionar Lançamento
                     </button>
                   </div>
 
                   {dealRows.length === 0 ? (
-                    <div className="py-8 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400">
-                      <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                      <p className="text-sm">Nenhum negócio cadastrado ainda.</p>
-                      <button type="button" onClick={addDealRow} className="text-sm text-indigo-600 font-medium mt-1 hover:underline">
-                        + Adicionar primeiro negócio
-                      </button>
+                    <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200/60 p-8">
+                      <Package className="w-10 h-10 mx-auto mb-3 text-slate-300 opacity-50" />
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Nenhuma proposta ativa para este cliente</p>
                     </div>
                   ) : (
-                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-xs text-slate-500 font-medium border-b border-slate-200">
-                          <tr>
-                            <th className="px-4 py-2.5 text-left">Produto</th>
-                            <th className="px-4 py-2.5 text-left">Status</th>
-                            <th className="px-4 py-2.5 text-left">Valor (R$)</th>
-                            {isAdmin && <th className="px-4 py-2.5 text-left">Pagamento</th>}
-                            <th className="px-4 py-2.5 text-left">Obs.</th>
-                            <th className="px-2 py-2.5"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {dealRows.map((deal, i) => (
-                            <tr key={deal.id || i} className="bg-white hover:bg-slate-50/50 transition-colors">
-                              {/* Product */}
-                              <td className="px-4 py-2">
-                                <select value={deal.product_id} onChange={e => updRow(i, 'product_id', e.target.value)}
-                                  className="w-full min-w-[130px] border border-slate-200 rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
-                                  <option value="">Selecione...</option>
-                                  {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select>
-                              </td>
-
-                              {/* Status */}
-                              <td className="px-4 py-2">
-                                {!isAdmin && deal.status === 'Fechado' ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-md text-xs font-semibold text-emerald-700 whitespace-nowrap">
-                                    ✅ Fechado <span className="font-normal text-emerald-500 text-[10px]">(Admin)</span>
-                                  </span>
-                                ) : (
-                                  <select value={deal.status} onChange={e => updRow(i, 'status', e.target.value)}
-                                    className="w-full min-w-[130px] border border-slate-200 rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
-                                    <option value="Lead">Lead</option>
-                                    <option value="Em Negociação">Em Negociação</option>
-                                    {isAdmin && <option value="Fechado">Fechado</option>}
-                                    <option value="Perdido">Perdido</option>
-                                  </select>
-                                )}
-                              </td>
-
-                              {/* Value */}
-                              <td className="px-4 py-2">
-                                {isAdmin ? (
-                                  <input type="number" step="0.01" value={deal.value}
-                                    onChange={e => updRow(i, 'value', e.target.value)}
-                                    className="w-24 border border-slate-200 rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-                                ) : (
-                                  <span className="block px-2 py-1.5 text-xs text-slate-700 bg-slate-100 rounded-md w-24 text-right">
-                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parseFloat(deal.value) || 0)}
-                                  </span>
-                                )}
-                              </td>
-
-                              {/* Payment — admin only */}
-                              {isAdmin && (
-                                <td className="px-4 py-2">
-                                  <select value={deal.payment_method} onChange={e => updRow(i, 'payment_method', e.target.value)}
-                                    className="w-full min-w-[130px] border border-slate-200 rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
-                                    <option value="">—</option>
-                                    <option value="Pix">Pix</option>
-                                    <option value="Cartão de Crédito">Cartão de Crédito</option>
-                                    <option value="Cartão de Débito">Cartão de Débito</option>
-                                    <option value="Boleto">Boleto</option>
-                                    <option value="Dinheiro">Dinheiro</option>
-                                    <option value="Transferência Bancária">Transferência Bancária</option>
-                                    <option value="Parcelado">Parcelado (outro)</option>
-                                  </select>
-                                </td>
-                              )}
-
-                              {/* Notes */}
-                              <td className="px-4 py-2">
-                                <input type="text" value={deal.notes} onChange={e => updRow(i, 'notes', e.target.value)}
-                                  placeholder="Observações..."
-                                  className="w-full min-w-[120px] border border-slate-200 rounded-md px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-                              </td>
-
-                              {/* Delete */}
-                              <td className="px-2 py-2">
-                                <button type="button" onClick={() => handleDeleteDeal(deal.id, i)}
-                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {dealRows.map((deal, i) => (
+                        <div key={deal.id || i} 
+                          className="bg-white border border-slate-100 p-5 rounded-[1.5rem] hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 transition-all group relative overflow-hidden">
+                          <div className={cn("absolute top-0 right-0 p-3 opacity-5", 
+                            deal.status === 'Fechado' ? 'text-emerald-500' : 'text-amber-500')}>
+                            <ShoppingBag className="w-12 h-12" />
+                          </div>
+                          
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex-1 min-w-0">
+                               <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-wider mb-0.5">Solução / Produto</p>
+                               <p className="text-sm font-semibold text-slate-700 truncate mb-2">
+                                {products.find(p => p.id === deal.product_id)?.name || 'Produto Não Identificado'}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <span className={cn("px-2.5 py-0.5 rounded-lg text-[9px] font-semibold uppercase tracking-tighter border shadow-sm",
+                                  deal.status === 'Fechado' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                  deal.status === 'Perdido' ? 'bg-red-50 text-red-600 border-red-100' :
+                                  'bg-amber-50 text-amber-600 border-amber-100'
+                                )}>
+                                  {deal.status}
+                                </span>
+                                <span className="text-xs font-semibold text-slate-900 tabular-nums">
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parseFloat(deal.value) || 0)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => openDealModal(deal, i)}
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white hover:shadow-md rounded-xl transition-all border border-transparent hover:border-slate-100">
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button type="button" onClick={() => handleDeleteDeal(deal.id, i)}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-white hover:shadow-md rounded-xl transition-all border border-transparent hover:border-slate-100">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          {deal.notes && (
+                            <p className="text-[11px] text-slate-500 italic leading-relaxed line-clamp-2 border-t border-slate-50 pt-3">
+                              "{deal.notes}"
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
-                </div>
+                </section>
               </div>
 
-              {/* Footer */}
-              <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+              {/* Footer refined */}
+            <div className="p-8 bg-slate-50/50 backdrop-blur-sm border-t border-slate-100 flex justify-between items-center rounded-b-[2rem]">
                 {isEditModalOpen && selectedClient ? (
                   <button type="button" onClick={() => handleDeleteLead(selectedClient.id)}
-                    className="text-sm font-medium text-red-600 hover:text-red-700">
-                    Excluir Cliente
+                    className="text-[10px] font-semibold text-red-300 hover:text-red-500 uppercase tracking-widest transition-colors flex items-center gap-2">
+                    <Trash2 className="w-3.5 h-3.5" /> Excluir Cliente Permanente
                   </button>
                 ) : <div />}
-                <div className="flex gap-3">
+                <div className="flex gap-6 items-center">
                   <button type="button" onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}
-                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900">
-                    Cancelar
+                    className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">
+                    Descartar Alterações
                   </button>
                   <button type="submit" disabled={loading || savingDeals}
-                    className="px-5 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm disabled:opacity-50">
-                    {loading || savingDeals ? 'Salvando...' : 'Salvar Cliente'}
+                    className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-sm transition-all uppercase tracking-[0.1em] text-[11px] disabled:opacity-50 active:scale-[0.98]">
+                    {loading || savingDeals ? 'Sincronizando...' : 'Confirmar e Salvar Dados'}
                   </button>
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Deal Pop-up Modal */}
+      {isDealModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-[4px] animate-in fade-in duration-300">
+          <div className="bg-white rounded-[1.5rem] shadow-xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-100">
+            <div className="flex items-center justify-between p-7 border-b border-slate-100 bg-slate-50/20">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-600/90 rounded-xl flex items-center justify-center shadow-sm">
+                  <ShoppingBag className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-slate-800 tracking-tight">
+                    {editingDealIdx !== null ? 'Configurar Negócio' : 'Novo Lançamento'}
+                  </h4>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-0.5">Defina os parâmetros financeiros</p>
+                </div>
+              </div>
+              <button onClick={() => setIsDealModalOpen(false)} className="text-slate-300 hover:text-slate-900 p-2 rounded-xl hover:bg-white transition-all">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-7 space-y-7 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Solução / Produto</label>
+                  <select 
+                    value={tempDeal.product_id}
+                    onChange={e => setTempDeal({...tempDeal, product_id: e.target.value})}
+                    disabled={!isAdmin && !!tempDeal.id}
+                    className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Selecione o produto estratégico...</option>
+                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Estágio Atual</label>
+                  {!isAdmin && tempDeal.status === 'Fechado' ? (
+                    <div className="px-4 py-2.5 bg-emerald-50/50 border border-emerald-100 rounded-xl text-sm font-semibold text-emerald-600 flex items-center gap-2 uppercase tracking-tighter shadow-sm">
+                      <CheckCircle2 className="w-4 h-4" /> STATUS: Fechado
+                    </div>
+                  ) : (
+                    <select 
+                      value={tempDeal.status}
+                      onChange={e => setTempDeal({...tempDeal, status: e.target.value})}
+                      className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer uppercase tracking-tighter"
+                    >
+                      <option value="Lead">Lead</option>
+                      <option value="Em Negociação">Em Negociação</option>
+                      {isAdmin && <option value="Fechado">Fechado</option>}
+                      <option value="Perdido">Perdido</option>
+                    </select>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Valor Unitário / Total</label>
+                  <div className="relative group">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm font-semibold group-focus-within:text-indigo-500 transition-colors">R$</span>
+                    <input 
+                      type="number" step="0.01"
+                      value={tempDeal.value}
+                      onChange={e => setTempDeal({...tempDeal, value: e.target.value})}
+                      className="w-full bg-slate-50/50 border border-slate-100 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all tabular-nums"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {isAdmin && (
+                <div className="space-y-6 pt-6 border-t border-slate-100">
+                   <div className="flex items-center gap-3 mb-2">
+                    <div className="w-1 h-3.5 bg-emerald-500 rounded-full" />
+                    <h5 className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.2em]">Painel de Controle Admin</h5>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Meio de Recebimento</label>
+                      <select 
+                        value={tempDeal.payment_method}
+                        onChange={e => setTempDeal({...tempDeal, payment_method: e.target.value})}
+                        className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all cursor-pointer"
+                      >
+                        <option value="">— Formato —</option>
+                        <option value="Pix">Pix</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Boleto">Boleto</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Transferência Bancária">Transferência Bancária</option>
+                        <option value="Parcelado">Parcelado (outro)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Execução Técnica</label>
+                      <select 
+                        value={tempDeal.execution_status}
+                        onChange={e => setTempDeal({...tempDeal, execution_status: e.target.value})}
+                        className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all cursor-pointer"
+                      >
+                        {Object.keys(EXECUTION_STATUS_STYLE).map(st => <option key={st} value={st}>{st}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {tempDeal.execution_status === 'Pendenciado' && (
+                    <div className="bg-amber-50/30 p-6 rounded-2xl border border-amber-100/50 space-y-5 animate-in slide-in-from-top-1 duration-300">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider ml-1">Detalhamento da Pendência</label>
+                        <textarea 
+                          value={tempDeal.pending_description}
+                          onChange={e => setTempDeal({...tempDeal, pending_description: e.target.value})}
+                          placeholder="Quais documentos ou ações faltam?"
+                          className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-amber-500/5 focus:border-amber-500/30 min-h-[80px] transition-all resize-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider ml-1">Link para Gestão Doc</label>
+                        <div className="relative group">
+                          <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-300 w-4 h-4" />
+                          <input 
+                            type="url"
+                            value={tempDeal.pending_document_url}
+                            onChange={e => setTempDeal({...tempDeal, pending_document_url: e.target.value})}
+                            placeholder="https://..."
+                            className="w-full bg-white border border-amber-100 rounded-xl pl-11 pr-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-amber-500/5 focus:border-amber-500/30 transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1.5 pt-2">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Notas e Considerações</label>
+                <textarea 
+                  value={tempDeal.notes}
+                  onChange={e => setTempDeal({...tempDeal, notes: e.target.value})}
+                  placeholder="Observações importantes sobre este contrato..."
+                  className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-4 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all min-h-[120px] resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-7 bg-slate-50/50 backdrop-blur-sm border-t border-slate-100 flex justify-between items-center">
+              <button 
+                onClick={() => setIsDealModalOpen(false)}
+                className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors"
+              >
+                Voltar
+              </button>
+              <button 
+                onClick={saveTempDeal}
+                className="px-8 py-3 bg-slate-900 text-white font-semibold rounded-xl hover:bg-black shadow-sm transition-all uppercase tracking-[0.1em] text-[11px] active:scale-[0.98]"
+              >
+                Confirmar Lançamento
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -53,6 +53,10 @@ export interface Database {
           price: number
           commission_rate: number
           commission_value: number
+          commission_direct: number
+          commission_lvl1: number
+          commission_lvl2: number
+          cost: number
           status: string
           link: string | null
           created_at: string
@@ -64,6 +68,10 @@ export interface Database {
           price: number
           commission_rate: number
           commission_value?: number
+          commission_direct?: number
+          commission_lvl1?: number
+          commission_lvl2?: number
+          cost?: number
           status?: string
           link?: string | null
           created_at?: string
@@ -75,6 +83,10 @@ export interface Database {
           price?: number
           commission_rate?: number
           commission_value?: number
+          commission_direct?: number
+          commission_lvl1?: number
+          commission_lvl2?: number
+          cost?: number
           status?: string
           link?: string | null
           created_at?: string
@@ -91,6 +103,9 @@ export interface Database {
           value: number
           payment_method: string | null
           notes: string | null
+          execution_status: string | null
+          pending_description: string | null
+          pending_document_url: string | null
           created_at: string
         }
         Insert: {
@@ -102,6 +117,9 @@ export interface Database {
           value?: number
           payment_method?: string | null
           notes?: string | null
+          execution_status?: string | null
+          pending_description?: string | null
+          pending_document_url?: string | null
           created_at?: string
         }
         Update: {
@@ -113,6 +131,9 @@ export interface Database {
           value?: number
           payment_method?: string | null
           notes?: string | null
+          execution_status?: string | null
+          pending_description?: string | null
+          pending_document_url?: string | null
           created_at?: string
         }
         Relationships: [
@@ -133,6 +154,17 @@ export interface Database {
           value: number
           payment_method: string | null
           created_at: string
+          cpf: string | null
+          rg: string | null
+          birth_date: string | null
+          gender: string | null
+          address_zip_code: string | null
+          address_street: string | null
+          address_number: string | null
+          address_complement: string | null
+          address_neighborhood: string | null
+          address_city: string | null
+          address_state: string | null
         }
         Insert: {
           id?: string
@@ -145,6 +177,17 @@ export interface Database {
           value?: number
           payment_method?: string | null
           created_at?: string
+          cpf?: string | null
+          rg?: string | null
+          birth_date?: string | null
+          gender?: string | null
+          address_zip_code?: string | null
+          address_street?: string | null
+          address_number?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_city?: string | null
+          address_state?: string | null
         }
         Update: {
           id?: string
@@ -157,6 +200,17 @@ export interface Database {
           value?: number
           payment_method?: string | null
           created_at?: string
+          cpf?: string | null
+          rg?: string | null
+          birth_date?: string | null
+          gender?: string | null
+          address_zip_code?: string | null
+          address_street?: string | null
+          address_number?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_city?: string | null
+          address_state?: string | null
         }
         Relationships: [
           {

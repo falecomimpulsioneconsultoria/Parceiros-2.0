@@ -165,7 +165,7 @@ export function AdminSettings() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="max-w-full mx-auto space-y-6 pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Configurações do Sistema</h1>

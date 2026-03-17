@@ -17,9 +17,12 @@ export function AdminProducts() {
     name: '',
     description: '',
     price: '',
-    commission_value: '',
+    commission_direct: '',
+    commission_lvl1: '',
+    commission_lvl2: '',
     link: '',
-    status: 'Ativo'
+    status: 'Ativo',
+    cost: ''
   });
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -55,15 +58,29 @@ export function AdminProducts() {
         description: newProduct.description,
         price: parseFloat(newProduct.price.replace(',', '.')),
         commission_rate: 0,
-        commission_value: parseFloat(newProduct.commission_value.replace(',', '.')) || 0,
+        commission_value: parseFloat(newProduct.commission_direct.replace(',', '.')) || 0,
+        commission_direct: parseFloat(newProduct.commission_direct.replace(',', '.')) || 0,
+        commission_lvl1: parseFloat(newProduct.commission_lvl1.replace(',', '.')) || 0,
+        commission_lvl2: parseFloat(newProduct.commission_lvl2.replace(',', '.')) || 0,
         link: newProduct.link,
-        status: newProduct.status
+        status: newProduct.status,
+        cost: parseFloat(newProduct.cost.replace(',', '.')) || 0
       };
       const { data, error } = await supabase.from('products').insert([productData]).select();
       if (error) throw error;
       if (data) setProducts([data[0], ...products]);
       setIsAddModalOpen(false);
-      setNewProduct({ name: '', description: '', price: '', commission_value: '', link: '', status: 'Ativo' });
+      setNewProduct({ 
+        name: '', 
+        description: '', 
+        price: '', 
+        commission_direct: '', 
+        commission_lvl1: '', 
+        commission_lvl2: '', 
+        link: '', 
+        status: 'Ativo',
+        cost: ''
+      });
       setMessage({ type: 'success', text: 'Produto adicionado com sucesso!' });
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
@@ -86,9 +103,13 @@ export function AdminProducts() {
           name: editProduct.name,
           description: editProduct.description,
           price: editProduct.price,
-          commission_value: editProduct.commission_value,
+          commission_value: editProduct.commission_direct,
+          commission_direct: editProduct.commission_direct,
+          commission_lvl1: editProduct.commission_lvl1,
+          commission_lvl2: editProduct.commission_lvl2,
           link: editProduct.link,
           status: editProduct.status,
+          cost: editProduct.cost,
         })
         .eq('id', editProduct.id);
       if (error) throw error;
@@ -131,7 +152,7 @@ export function AdminProducts() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="max-w-full mx-auto space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
@@ -140,7 +161,7 @@ export function AdminProducts() {
         </div>
         <button 
           onClick={() => setIsAddModalOpen(true)}
-          className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+          className="inline-flex items-center justify-center px-4 py-1.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
         >
           <Plus className="w-5 h-5 mr-2" />
           Novo Produto
@@ -181,8 +202,8 @@ export function AdminProducts() {
               <tr>
                 <th className="px-6 py-4">Produto</th>
                 <th className="px-6 py-4">Preço</th>
-                <th className="px-6 py-4">Comissão Base</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Comissões (D / N1 / N2)</th>
                 <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
@@ -211,9 +232,6 @@ export function AdminProducts() {
                     <td className="px-6 py-4 font-medium text-slate-900">
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.price)}
                     </td>
-                    <td className="px-6 py-4 font-medium text-emerald-600">
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_value || 0)}
-                    </td>
                     <td className="px-6 py-4">
                       <span className={cn(
                         "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
@@ -221,6 +239,13 @@ export function AdminProducts() {
                       )}>
                         {product.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-emerald-600 font-bold text-xs">D: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_direct || 0)}</span>
+                        <span className="text-blue-600 text-[10px] font-medium">N1: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_lvl1 || 0)}</span>
+                        <span className="text-indigo-500 text-[10px] font-medium">N2: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_lvl2 || 0)}</span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -262,93 +287,124 @@ export function AdminProducts() {
               </button>
             </div>
             
-            <form onSubmit={handleAddProduct} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Nome do Produto</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newProduct.name}
-                    onChange={e => setNewProduct({...newProduct, name: e.target.value})}
-                    placeholder="Ex: Plano Premium Anual"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
-                  />
-                </div>
-                
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Descrição</label>
-                  <textarea 
-                    rows={3}
-                    value={newProduct.description}
-                    onChange={e => setNewProduct({...newProduct, description: e.target.value})}
-                    placeholder="Descreva os benefícios e características do produto..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
-                  ></textarea>
-                </div>
+            <div className="max-h-[85vh] overflow-y-auto custom-scrollbar">
+              <form onSubmit={handleAddProduct} className="p-6 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Nome do Produto</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newProduct.name}
+                      onChange={e => setNewProduct({...newProduct, name: e.target.value})}
+                      placeholder="Ex: Plano Premium Anual"
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Descrição</label>
+                    <textarea 
+                      rows={2}
+                      value={newProduct.description}
+                      onChange={e => setNewProduct({...newProduct, description: e.target.value})}
+                      placeholder="Descreva o produto..."
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
+                    ></textarea>
+                  </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Preço (R$)</label>
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    required
-                    value={newProduct.price}
-                    onChange={e => setNewProduct({...newProduct, price: e.target.value})}
-                    placeholder="0,00"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Comissão por Venda (R$)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">R$</span>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Preço (R$)</label>
                     <input 
                       type="number" 
                       step="0.01"
                       required
-                      value={newProduct.commission_value}
-                      onChange={e => setNewProduct({...newProduct, commission_value: e.target.value})}
+                      value={newProduct.price}
+                      onChange={e => setNewProduct({...newProduct, price: e.target.value})}
                       placeholder="0,00"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     />
                   </div>
-                  <p className="text-xs text-slate-400">Valor fixo em R$ que o parceiro recebe ao fechar este produto.</p>
-                </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Custo (R$)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={newProduct.cost}
+                      onChange={e => setNewProduct({...newProduct, cost: e.target.value})}
+                      placeholder="0,00"
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                    />
+                  </div>
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Status</label>
+                    <select 
+                      value={newProduct.status}
+                      onChange={e => setNewProduct({...newProduct, status: e.target.value})}
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                    >
+                      <option value="Ativo">Ativo</option>
+                      <option value="Inativo">Inativo</option>
+                    </select>
+                  </div>
 
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Link de Checkout / Venda</label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <div className="md:col-span-2 grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        required
+                        value={newProduct.commission_direct}
+                        onChange={e => setNewProduct({...newProduct, commission_direct: e.target.value})}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        required
+                        value={newProduct.commission_lvl1}
+                        onChange={e => setNewProduct({...newProduct, commission_lvl1: e.target.value})}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        required
+                        value={newProduct.commission_lvl2}
+                        onChange={e => setNewProduct({...newProduct, commission_lvl2: e.target.value})}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Link de Checkout</label>
                     <input 
                       type="url" 
                       value={newProduct.link}
                       onChange={e => setNewProduct({...newProduct, link: e.target.value})}
                       placeholder="https://..."
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-100">
-                <button 
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit"
-                  disabled={loading}
-                  className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
-                >
-                  {loading ? 'Salvando...' : 'Salvar Produto'}
-                </button>
-              </div>
-            </form>
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-5 py-1.5 text-slate-600 font-medium hover:bg-slate-100 rounded-lg">Cancelar</button>
+                  <button type="submit" disabled={loading} className="px-5 py-1.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                    {loading ? 'Salvando...' : 'Salvar Produto'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
@@ -359,72 +415,127 @@ export function AdminProducts() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <h2 className="text-xl font-bold text-slate-900">Editar Produto</h2>
-              <button onClick={() => { setIsEditModalOpen(false); setEditProduct(null); }}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+              <button 
+                onClick={() => { setIsEditModalOpen(false); setEditProduct(null); }}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleEditProduct} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Nome do Produto</label>
-                  <input type="text" required value={editProduct.name}
-                    onChange={e => setEditProduct({...editProduct, name: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" />
-                </div>
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Descrição</label>
-                  <textarea rows={3} value={editProduct.description || ''}
-                    onChange={e => setEditProduct({...editProduct, description: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none">
-                  </textarea>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Preço (R$)</label>
-                  <input type="number" step="0.01" required value={editProduct.price}
-                    onChange={e => setEditProduct({...editProduct, price: parseFloat(e.target.value)})}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Comissão por Venda (R$)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">R$</span>
-                    <input type="number" step="0.01" required value={editProduct.commission_value || 0}
-                      onChange={e => setEditProduct({...editProduct, commission_value: parseFloat(e.target.value)})}
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" />
+            
+            <div className="max-h-[85vh] overflow-y-auto custom-scrollbar">
+              <form onSubmit={handleEditProduct} className="p-6 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Nome do Produto</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={editProduct.name}
+                      onChange={e => setEditProduct({...editProduct, name: e.target.value})}
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
                   </div>
-                  <p className="text-xs text-slate-400">Valor fixo em R$ que o parceiro recebe ao fechar este produto.</p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Status</label>
-                  <select value={editProduct.status}
-                    onChange={e => setEditProduct({...editProduct, status: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all">
-                    <option value="Ativo">Ativo</option>
-                    <option value="Inativo">Inativo</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-700">Link de Checkout / Venda</label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                    <input type="url" value={editProduct.link || ''}
+                  
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Descrição</label>
+                    <textarea 
+                      rows={2}
+                      value={editProduct.description || ''}
+                      onChange={e => setEditProduct({...editProduct, description: e.target.value})}
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all resize-none"
+                    ></textarea>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Preço (R$)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={editProduct.price}
+                      onChange={e => setEditProduct({...editProduct, price: parseFloat(e.target.value)})}
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Custo (R$)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={editProduct.cost || 0}
+                      onChange={e => setEditProduct({...editProduct, cost: parseFloat(e.target.value)})}
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
+                  </div>
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Status</label>
+                    <select 
+                      value={editProduct.status}
+                      onChange={e => setEditProduct({...editProduct, status: e.target.value})}
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    >
+                      <option value="Ativo">Ativo</option>
+                      <option value="Inativo">Inativo</option>
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2 grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        required
+                        value={editProduct.commission_direct || 0}
+                        onChange={e => setEditProduct({...editProduct, commission_direct: parseFloat(e.target.value)})}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        required
+                        value={editProduct.commission_lvl1 || 0}
+                        onChange={e => setEditProduct({...editProduct, commission_lvl1: parseFloat(e.target.value)})}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        required
+                        value={editProduct.commission_lvl2 || 0}
+                        onChange={e => setEditProduct({...editProduct, commission_lvl2: parseFloat(e.target.value)})}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-sm font-medium text-slate-700">Link de Checkout</label>
+                    <input 
+                      type="url" 
+                      value={editProduct.link || ''}
                       onChange={e => setEditProduct({...editProduct, link: e.target.value})}
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all" />
+                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-100">
-                <button type="button" onClick={() => { setIsEditModalOpen(false); setEditProduct(null); }}
-                  className="px-5 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={loading}
-                  className="px-5 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50">
-                  {loading ? 'Salvando...' : 'Salvar Alterações'}
-                </button>
-              </div>
-            </form>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button type="button" onClick={() => { setIsEditModalOpen(false); setEditProduct(null); }} className="px-5 py-1.5 text-slate-600 font-medium hover:bg-slate-100 rounded-lg">Cancelar</button>
+                  <button type="submit" disabled={loading} className="px-5 py-1.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                    {loading ? 'Salvando...' : 'Salvar Alterações'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
