@@ -303,6 +303,38 @@ export interface Database {
           }
         ]
       }
+      product_qrcodes: {
+        Row: {
+          id: string
+          partner_product_id: string
+          name: string
+          redirect_phone: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          partner_product_id: string
+          name: string
+          redirect_phone?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          partner_product_id?: string
+          name?: string
+          redirect_phone?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_qrcodes_partner_product_id_fkey"
+            columns: ["partner_product_id"]
+            isOneToOne: false
+            referencedRelation: "partner_products"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       system_settings: {
         Row: {
           id: number
