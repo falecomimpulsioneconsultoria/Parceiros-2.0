@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserPlus, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 export function RegisterPage() {
   const { partnerId } = useParams<{ partnerId: string }>();
+  const [searchParams] = useSearchParams();
+  const type = searchParams.get('type') || 'vendedor';
   const navigate = useNavigate();
   const { role } = useAuth();
 
@@ -85,6 +87,7 @@ export function RegisterPage() {
             full_name: form.fullName,
             role: 'partner',
             referred_by: partnerId || null,
+            partner_type: type,
           })
           .eq('id', authData.user.id);
 
@@ -163,13 +166,13 @@ export function RegisterPage() {
             <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-xl mb-4 lg:mb-3">
               <UserPlus className="w-6 h-6 text-indigo-600" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">Cadastro de Parceiro</h1>
+            <h1 className="text-2xl font-bold text-slate-900 capitalize">Cadastro de {type}</h1>
             {referrerName ? (
               <p className="text-slate-500 mt-1">
                 Você foi convidado por <span className="font-semibold text-indigo-700">{referrerName}</span>
               </p>
             ) : (
-              <p className="text-slate-500 mt-1">Crie sua conta para começar.</p>
+              <p className="text-slate-500 mt-1">Crie sua conta para começar como {type}.</p>
             )}
           </div>
 

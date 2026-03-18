@@ -18,6 +18,8 @@ export function AdminProducts() {
     description: '',
     price: '',
     commission_direct: '',
+    commission_indicator: '',
+    commission_captador: '',
     commission_lvl1: '',
     commission_lvl2: '',
     link: '',
@@ -60,6 +62,8 @@ export function AdminProducts() {
         commission_rate: 0,
         commission_value: parseFloat(newProduct.commission_direct.replace(',', '.')) || 0,
         commission_direct: parseFloat(newProduct.commission_direct.replace(',', '.')) || 0,
+        commission_indicator: parseFloat(newProduct.commission_indicator.replace(',', '.')) || 0,
+        commission_captador: parseFloat(newProduct.commission_captador.replace(',', '.')) || 0,
         commission_lvl1: parseFloat(newProduct.commission_lvl1.replace(',', '.')) || 0,
         commission_lvl2: parseFloat(newProduct.commission_lvl2.replace(',', '.')) || 0,
         link: newProduct.link,
@@ -75,6 +79,8 @@ export function AdminProducts() {
         description: '', 
         price: '', 
         commission_direct: '', 
+        commission_indicator: '',
+        commission_captador: '',
         commission_lvl1: '', 
         commission_lvl2: '', 
         link: '', 
@@ -105,6 +111,8 @@ export function AdminProducts() {
           price: editProduct.price,
           commission_value: editProduct.commission_direct,
           commission_direct: editProduct.commission_direct,
+          commission_indicator: editProduct.commission_indicator,
+          commission_captador: editProduct.commission_captador,
           commission_lvl1: editProduct.commission_lvl1,
           commission_lvl2: editProduct.commission_lvl2,
           link: editProduct.link,
@@ -203,7 +211,7 @@ export function AdminProducts() {
                 <th className="px-6 py-4">Produto</th>
                 <th className="px-6 py-4">Preço</th>
                 <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Comissões (D / N1 / N2)</th>
+                <th className="px-6 py-4">Comissões (V / C / N1 / N2)</th>
                 <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
@@ -242,7 +250,8 @@ export function AdminProducts() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-emerald-600 font-bold text-xs">D: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_direct || 0)}</span>
+                        <span className="text-emerald-600 font-bold text-xs">V: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_direct || 0)}</span>
+                        <span className="text-amber-600 font-bold text-xs">C: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_captador || 0)}</span>
                         <span className="text-blue-600 text-[10px] font-medium">N1: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_lvl1 || 0)}</span>
                         <span className="text-indigo-500 text-[10px] font-medium">N2: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_lvl2 || 0)}</span>
                       </div>
@@ -288,8 +297,8 @@ export function AdminProducts() {
             </div>
             
             <div className="max-h-[85vh] overflow-y-auto custom-scrollbar">
-              <form onSubmit={handleAddProduct} className="p-6 space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <form onSubmit={handleAddProduct} className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-sm font-medium text-slate-700">Nome do Produto</label>
                     <input 
@@ -337,6 +346,7 @@ export function AdminProducts() {
                       className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
                     />
                   </div>
+                  
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-sm font-medium text-slate-700">Status</label>
                     <select 
@@ -349,40 +359,61 @@ export function AdminProducts() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-2 grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        required
-                        value={newProduct.commission_direct}
-                        onChange={e => setNewProduct({...newProduct, commission_direct: e.target.value})}
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        required
-                        value={newProduct.commission_lvl1}
-                        onChange={e => setNewProduct({...newProduct, commission_lvl1: e.target.value})}
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        required
-                        value={newProduct.commission_lvl2}
-                        onChange={e => setNewProduct({...newProduct, commission_lvl2: e.target.value})}
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                      />
-                    </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Vendedor)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={newProduct.commission_direct}
+                      onChange={e => setNewProduct({...newProduct, commission_direct: e.target.value})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Indicador)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={newProduct.commission_indicator}
+                      onChange={e => setNewProduct({...newProduct, commission_indicator: e.target.value})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Captador)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={newProduct.commission_captador}
+                      onChange={e => setNewProduct({...newProduct, commission_captador: e.target.value})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1 (Vendedor)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={newProduct.commission_lvl1}
+                      onChange={e => setNewProduct({...newProduct, commission_lvl1: e.target.value})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2 (Vendedor)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={newProduct.commission_lvl2}
+                      onChange={e => setNewProduct({...newProduct, commission_lvl2: e.target.value})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                    />
                   </div>
 
                   <div className="md:col-span-2 space-y-1">
@@ -424,8 +455,8 @@ export function AdminProducts() {
             </div>
             
             <div className="max-h-[85vh] overflow-y-auto custom-scrollbar">
-              <form onSubmit={handleEditProduct} className="p-6 space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <form onSubmit={handleEditProduct} className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-sm font-medium text-slate-700">Nome do Produto</label>
                     <input 
@@ -469,6 +500,7 @@ export function AdminProducts() {
                       className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
                     />
                   </div>
+                  
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-sm font-medium text-slate-700">Status</label>
                     <select 
@@ -481,40 +513,61 @@ export function AdminProducts() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-2 grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        required
-                        value={editProduct.commission_direct || 0}
-                        onChange={e => setEditProduct({...editProduct, commission_direct: parseFloat(e.target.value)})}
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        required
-                        value={editProduct.commission_lvl1 || 0}
-                        onChange={e => setEditProduct({...editProduct, commission_lvl1: parseFloat(e.target.value)})}
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        required
-                        value={editProduct.commission_lvl2 || 0}
-                        onChange={e => setEditProduct({...editProduct, commission_lvl2: parseFloat(e.target.value)})}
-                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                      />
-                    </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Vendedor)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={editProduct.commission_direct || 0}
+                      onChange={e => setEditProduct({...editProduct, commission_direct: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Indicador)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={editProduct.commission_indicator || 0}
+                      onChange={e => setEditProduct({...editProduct, commission_indicator: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Captador)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={editProduct.commission_captador || 0}
+                      onChange={e => setEditProduct({...editProduct, commission_captador: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1 (Vendedor)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={editProduct.commission_lvl1 || 0}
+                      onChange={e => setEditProduct({...editProduct, commission_lvl1: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                    />
+                  </div>
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2 (Vendedor)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      required
+                      value={editProduct.commission_lvl2 || 0}
+                      onChange={e => setEditProduct({...editProduct, commission_lvl2: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                    />
                   </div>
 
                   <div className="md:col-span-2 space-y-1">

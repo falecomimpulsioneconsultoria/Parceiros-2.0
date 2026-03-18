@@ -6,9 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: 'Visão Geral', href: '/admin' },
-  { icon: Users, label: 'Parceiros', href: '/admin/partners' },
+  { icon: Users, label: 'Parceiros e Usuários', href: '/admin/partners' },
   { icon: Contact, label: 'Clientes', href: '/admin/clients' },
-  { icon: Shield, label: 'Usuários', href: '/admin/users' },
   { icon: Package, label: 'Produtos', href: '/admin/products' },
   { icon: LayoutDashboard, label: 'Faturamento', href: '/admin/billing' },
   { icon: DollarSign, label: 'Extrato de Comissões', href: '/admin/commissions' },

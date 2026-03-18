@@ -32,11 +32,18 @@ const COLUMNS_CONFIG = [
 ];
 
 const EXECUTION_STATUS_STYLE: Record<string, { color: string, icon: any }> = {
-  'A iniciar':    { color: 'bg-slate-100 text-slate-700',   icon: Clock },
-  'Em andamento': { color: 'bg-blue-100 text-blue-700',    icon: PlayCircle },
-  'Pendenciado':  { color: 'bg-amber-100 text-amber-700',   icon: PauseCircle },
-  'Concluido':    { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-  'Cancelado':    { color: 'bg-red-100 text-red-700',      icon: XCircle },
+  'A iniciar':    { color: 'bg-slate-50 text-slate-500 border-slate-100/50',   icon: Clock },
+  'Em andamento': { color: 'bg-blue-50/50 text-blue-600 border-blue-100/30',    icon: PlayCircle },
+  'Pendenciado':  { color: 'bg-amber-50/50 text-amber-700 border-amber-100/30',   icon: PauseCircle },
+  'Concluido':    { color: 'bg-emerald-50/50 text-emerald-600 border-emerald-100/30', icon: CheckCircle },
+  'Cancelado':    { color: 'bg-red-50/50 text-red-700 border-red-100/30',      icon: XCircle },
+};
+
+const STATUS_STYLE: Record<string, string> = {
+  'Lead': 'bg-slate-50/50 text-slate-500 border-slate-100/50',
+  'Em Negociação': 'bg-blue-50/30 text-blue-500 border-blue-100/20',
+  'Fechado': 'bg-emerald-50/30 text-emerald-600 border-emerald-100/20',
+  'Perdido': 'bg-red-50/30 text-red-600 border-red-100/20',
 };
 
 export function FunnelPage() {
@@ -46,6 +53,7 @@ export function FunnelPage() {
   const [selectedTask, setSelectedTask] = useState<Deal | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
@@ -238,6 +246,19 @@ export function FunnelPage() {
             <p className="text-slate-400 text-sm font-medium mt-0.5">Gerencie suas vendas acompanhando cada negócio individualmente.</p>
           </div>
         </div>
+
+        <div className="flex items-center bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
+          <button onClick={() => setViewMode('list')}
+            className={cn("px-4 py-2 text-xs font-semibold rounded-lg transition-all", 
+              viewMode === 'list' ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50")}>
+            Lista
+          </button>
+          <button onClick={() => setViewMode('kanban')}
+            className={cn("px-4 py-2 text-xs font-semibold rounded-lg transition-all", 
+              viewMode === 'kanban' ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50")}>
+            Kanban
+          </button>
+        </div>
       </div>
 
       {message && (
@@ -250,153 +271,226 @@ export function FunnelPage() {
         </div>
       )}
 
-      {/* Kanban Board */}
-      <div className="flex-1 overflow-x-auto pb-6 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex gap-8 h-full min-w-max items-start">
-            {data.columnOrder.map((columnId) => {
-              const column = data.columns[columnId];
-              const tasks = column.taskIds.map((taskId) => data.tasks[taskId]);
+      {/* Conditional View Rendering */}
+      {viewMode === 'kanban' ? (
+        <div className="flex-1 overflow-x-auto pb-6 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+          <DragDropContext onDragEnd={onDragEnd}>
+            <div className="flex gap-8 h-full min-w-max items-start">
+              {data.columnOrder.map((columnId) => {
+                const column = data.columns[columnId];
+                const tasks = column.taskIds.map((taskId) => data.tasks[taskId]);
 
-              return (
-                <div key={column.id} className="w-80 flex flex-col h-full max-h-full">
-                  {/* Column Header */}
-                  {(() => {
-                    const columnTotal = tasks.reduce((sum, task) => sum + (task?.value || 0), 0);
-                    return (
-                      <div className="px-5 py-4 flex flex-col gap-2 mb-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-semibold text-slate-600 uppercase tracking-widest">{column.title}</span>
-                            <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-lg text-[10px] font-bold">
-                              {tasks.length}
-                            </span>
+                return (
+                  <div key={column.id} className="w-80 flex flex-col h-full max-h-full">
+                    {/* Column Header */}
+                    {(() => {
+                      const columnTotal = tasks.reduce((sum, task) => sum + (task?.value || 0), 0);
+                      return (
+                        <div className="px-5 py-4 flex flex-col gap-2 mb-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-semibold text-slate-600 uppercase tracking-widest">{column.title}</span>
+                              <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                                {tasks.length}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-lg font-semibold text-slate-800 flex items-center gap-1">
+                            <span className="text-slate-300 text-sm">R$</span>
+                            {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(columnTotal)}
+                          </div>
+                          <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden mt-1">
+                            <div className={cn("h-full transition-all duration-500", 
+                              column.id === 'Lead' ? 'bg-slate-400 w-1/4' :
+                              column.id === 'Em Negociação' ? 'bg-indigo-400 w-2/4' :
+                              column.id === 'Fechado' ? 'bg-emerald-400 w-full' : 'bg-red-400 w-full'
+                            )} />
                           </div>
                         </div>
-                        <div className="text-lg font-semibold text-slate-800 flex items-center gap-1">
-                          <span className="text-slate-300 text-sm">R$</span>
-                          {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(columnTotal)}
-                        </div>
-                        <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden mt-1">
-                          <div className={cn("h-full transition-all duration-500", 
-                            column.id === 'Lead' ? 'bg-slate-400 w-1/4' :
-                            column.id === 'Em Negociação' ? 'bg-indigo-400 w-2/4' :
-                            column.id === 'Fechado' ? 'bg-emerald-400 w-full' : 'bg-red-400 w-full'
-                          )} />
-                        </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
 
-                  {/* Droppable Area */}
-                  <Droppable droppableId={column.id} isDropDisabled={column.id === 'Fechado' && !isAdmin}>
-                    {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        className={cn(
-                          "flex-1 p-4 rounded-[2rem] bg-slate-50/50 border border-slate-100/50 transition-all duration-300 overflow-y-auto custom-scrollbar",
-                          snapshot.isDraggingOver ? "bg-indigo-50/30 ring-2 ring-indigo-500/10 border-indigo-100" : ""
-                        )}
-                      >
-                        <div className="space-y-4 min-h-[150px]">
-                          {tasks.map((task, index) => (
-                            <Draggable key={task.id} draggableId={task.id} index={index}>
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                  onClick={() => openEditModal(task)}
-                                  className={cn(
-                                    "bg-white p-5 rounded-2xl shadow-sm border border-slate-100/80 group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/5 transition-all cursor-pointer relative overflow-hidden",
-                                    snapshot.isDragging ? "shadow-2xl ring-4 ring-indigo-500/10 rotate-2 border-indigo-500" : ""
-                                  )}
-                                >
-                                    <div className="flex items-center justify-between gap-3 mb-4">
-                                      <h4 className="font-semibold text-slate-800 text-sm truncate uppercase tracking-tight">
-                                        {task.leads?.name || 'Venda Avulsa'}
-                                      </h4>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          copyTrackingLink(task.leads?.id || '');
-                                        }}
-                                        className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-indigo-600 transition-all"
-                                        title="Copiar Link de Acompanhamento"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                    
-                                    {/* Info Produto */}
-                                    <div className="bg-slate-50/80 rounded-xl p-3 mb-4">
-                                      <div className="flex items-center gap-2 text-[10px] text-indigo-500 font-bold uppercase tracking-widest mb-1.5">
-                                        <Package className="w-3 h-3" />
-                                        {task.products?.name || 'Produto indonhecido'}
+                    {/* Droppable Area */}
+                    <Droppable droppableId={column.id} isDropDisabled={column.id === 'Fechado' && !isAdmin}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          className={cn(
+                            "flex-1 p-4 rounded-[2rem] bg-slate-50/50 border border-slate-100/50 transition-all duration-300 overflow-y-auto custom-scrollbar",
+                            snapshot.isDraggingOver ? "bg-indigo-50/30 ring-2 ring-indigo-500/10 border-indigo-100" : ""
+                          )}
+                        >
+                          <div className="space-y-4 min-h-[150px]">
+                            {tasks.map((task, index) => (
+                              <Draggable key={task.id} draggableId={task.id} index={index}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    onClick={() => openEditModal(task)}
+                                    className={cn(
+                                      "bg-white p-5 rounded-2xl shadow-sm border border-slate-100/80 group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/5 transition-all cursor-pointer relative overflow-hidden",
+                                      snapshot.isDragging ? "shadow-2xl ring-4 ring-indigo-500/10 rotate-2 border-indigo-500" : ""
+                                    )}
+                                  >
+                                      <div className="flex items-center justify-between gap-3 mb-4">
+                                        <h4 className="font-semibold text-slate-800 text-sm truncate uppercase tracking-tight">
+                                          {task.leads?.name || 'Venda Avulsa'}
+                                        </h4>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            copyTrackingLink(task.leads?.id || '');
+                                          }}
+                                          className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-indigo-600 transition-all"
+                                          title="Copiar Link de Acompanhamento"
+                                        >
+                                          <Copy className="w-3.5 h-3.5" />
+                                        </button>
                                       </div>
-                                      <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
-                                        {task.payment_method ? (
-                                          <>
-                                            <div className="w-1 h-1 bg-slate-300 rounded-full" />
-                                            Pago via {task.payment_method}
-                                          </>
-                                        ) : (
-                                          <>
-                                            <div className="w-1 h-1 bg-slate-300 rounded-full" />
-                                            Pagamento não definido
-                                          </>
+                                      
+                                      {/* Info Produto */}
+                                      <div className="bg-slate-50/80 rounded-xl p-3 mb-4">
+                                        <div className="flex items-center gap-2 text-[10px] text-indigo-500 font-bold uppercase tracking-widest mb-1.5">
+                                          <Package className="w-3 h-3" />
+                                          {task.products?.name || 'Produto indonhecido'}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                                          {task.payment_method ? (
+                                            <>
+                                              <div className="w-1 h-1 bg-slate-300 rounded-full" />
+                                              Pago via {task.payment_method}
+                                            </>
+                                          ) : (
+                                            <>
+                                              <div className="w-1 h-1 bg-slate-300 rounded-full" />
+                                              Pagamento não definido
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Badge de Execução */}
+                                      <div className="flex items-center gap-2 mb-5">
+                                        <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-tighter border shadow-sm",
+                                          EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.color.replace('text-', 'border-').replace('100', '200/50').split(' ')[0],
+                                          EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-200')}>
+                                          {(() => {
+                                            const Icon = EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.icon || Clock;
+                                            return <Icon className="w-2.5 h-2.5" />;
+                                          })()}
+                                          {task.execution_status || 'A iniciar'}
+                                        </span>
+                                        {(task.execution_status === 'Pendenciado' && task.pending_description) && (
+                                          <div className="w-5 h-5 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100">
+                                            <AlertCircle className="w-3 h-3 text-amber-500" />
+                                          </div>
                                         )}
                                       </div>
-                                    </div>
 
-                                    {/* Badge de Execução */}
-                                    <div className="flex items-center gap-2 mb-5">
-                                      <span className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-tighter border shadow-sm",
-                                        EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.color.replace('text-', 'border-').replace('100', '200/50').split(' ')[0],
-                                        EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-200')}>
-                                        {(() => {
-                                          const Icon = EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.icon || Clock;
-                                          return <Icon className="w-2.5 h-2.5" />;
-                                        })()}
-                                        {task.execution_status || 'A iniciar'}
-                                      </span>
-                                      {(task.execution_status === 'Pendenciado' && task.pending_description) && (
-                                        <div className="w-5 h-5 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100">
-                                          <AlertCircle className="w-3 h-3 text-amber-500" />
+                                      <div className="flex items-center justify-between text-xs text-slate-400 pt-4 border-t border-slate-50">
+                                        <div className="flex items-center font-semibold text-slate-900 text-sm">
+                                          <span className="text-[10px] text-slate-300 mr-0.5">R$</span>
+                                          {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(task.value)}
                                         </div>
+                                        <div className="flex items-center text-[10px] font-medium">
+                                          <Calendar className="w-3 h-3 mr-1 text-slate-300" />
+                                          {new Date(task.created_at).toLocaleDateString('pt-BR')}
+                                        </div>
+                                      </div>
+                                      
+                                      {snapshot.isDragging && (
+                                        <div className="absolute inset-0 bg-indigo-600/5 backdrop-blur-[1px]" />
                                       )}
                                     </div>
-
-                                    <div className="flex items-center justify-between text-xs text-slate-400 pt-4 border-t border-slate-50">
-                                      <div className="flex items-center font-semibold text-slate-900 text-sm">
-                                        <span className="text-[10px] text-slate-300 mr-0.5">R$</span>
-                                        {new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(task.value)}
-                                      </div>
-                                      <div className="flex items-center text-[10px] font-medium">
-                                        <Calendar className="w-3 h-3 mr-1 text-slate-300" />
-                                        {new Date(task.created_at).toLocaleDateString('pt-BR')}
-                                      </div>
-                                    </div>
-                                    
-                                    {snapshot.isDragging && (
-                                      <div className="absolute inset-0 bg-indigo-600/5 backdrop-blur-[1px]" />
-                                    )}
-                                  </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
                         </div>
+                      )}
+                    </Droppable>
+                  </div>
+                );
+              })}
+            </div>
+          </DragDropContext>
+        </div>
+      ) : (
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden mb-12">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-50 bg-slate-50/30 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                  <th className="px-8 py-5">Cliente</th>
+                  <th className="px-8 py-5">Produto</th>
+                  <th className="px-8 py-5 text-center">Status Comercial</th>
+                  <th className="px-8 py-5 text-center">Execução</th>
+                  <th className="px-8 py-5 text-right">Valor</th>
+                  <th className="px-8 py-5 text-center">Data</th>
+                  <th className="px-8 py-5 text-right font-medium pr-10">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {Object.values(data.tasks)
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  .map((task) => (
+                  <tr key={task.id} className="hover:bg-slate-50/30 transition-all group">
+                    <td className="px-8 py-5">
+                      <div className="font-semibold text-slate-700 tracking-tight">{task.leads?.name || 'Venda Avulsa'}</div>
+                    </td>
+                    <td className="px-8 py-5 text-sm font-medium text-slate-500">
+                      <div className="flex items-center gap-2">
+                        <Package className="w-4 h-4 text-indigo-400/50" />
+                        <span className="text-xs">{task.products?.name || '—'}</span>
                       </div>
-                    )}
-                  </Droppable>
-                </div>
-              );
-            })}
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <span className={cn("inline-flex items-center px-3 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border shadow-none",
+                        STATUS_STYLE[task.status] || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
+                        {task.status}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <div className="flex items-center justify-center">
+                        <span className={cn("inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border shadow-none",
+                          EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.color.replace('text-', 'border-').replace('100', '200/30').split(' ')[0],
+                          EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
+                          {(() => {
+                            const Icon = EXECUTION_STATUS_STYLE[task.execution_status || 'A iniciar']?.icon || Clock;
+                            return <Icon className="w-3 h-3" />;
+                          })()}
+                          {task.execution_status || 'A iniciar'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-right font-semibold text-slate-600 tabular-nums">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(task.value)}
+                    </td>
+                    <td className="px-8 py-5 text-center text-[10px] font-medium text-slate-400 uppercase tracking-tight">
+                      {new Date(task.created_at).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-8 py-5 text-right pr-10">
+                      <div className="flex justify-end items-center gap-2">
+                        <button onClick={() => copyTrackingLink(task.leads?.id || '')} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-white rounded-lg transition-all border border-transparent hover:border-slate-100" title="Copiar Link">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => openEditModal(task)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-white rounded-lg transition-all border border-transparent hover:border-slate-100" title="Ver Detalhes">
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </DragDropContext>
-      </div>
+        </div>
+      )}
+
 
       {/* Edit Task Modal */}
       {isEditModalOpen && selectedTask && (

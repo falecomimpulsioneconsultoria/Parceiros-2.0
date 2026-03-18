@@ -24,21 +24,22 @@ type DealFormRow = {
   execution_status: string;
   pending_description: string;
   pending_document_url: string;
+  partner_role: string;
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  'Fechado':       'bg-emerald-100 text-emerald-700',
-  'Em Negociação': 'bg-amber-100 text-amber-700',
-  'Lead':          'bg-blue-100 text-blue-700',
-  'Perdido':       'bg-red-100 text-red-700',
+  'Fechado':       'bg-emerald-50/50 text-emerald-600 border-emerald-100/30',
+  'Em Negociação': 'bg-amber-50/50 text-amber-600 border-amber-100/30',
+  'Lead':          'bg-blue-50/50 text-blue-600 border-blue-100/30',
+  'Perdido':       'bg-red-50/50 text-red-600 border-red-100/30',
 };
 
 const EXECUTION_STATUS_STYLE: Record<string, { color: string, icon: any }> = {
-  'A iniciar':    { color: 'bg-slate-100 text-slate-700',   icon: Clock },
-  'Em andamento': { color: 'bg-blue-100 text-blue-700',    icon: PlayCircle },
-  'Pendenciado':  { color: 'bg-amber-100 text-amber-700',   icon: PauseCircle },
-  'Concluido':    { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-  'Cancelado':    { color: 'bg-red-100 text-red-700',      icon: XCircle },
+  'A iniciar':    { color: 'bg-slate-50 text-slate-500 border-slate-100/50',   icon: Clock },
+  'Em andamento': { color: 'bg-blue-50 text-blue-600 border-blue-100/30',    icon: PlayCircle },
+  'Pendenciado':  { color: 'bg-amber-50 text-amber-700 border-amber-100/30',   icon: PauseCircle },
+  'Concluido':    { color: 'bg-emerald-50 text-emerald-600 border-emerald-100/30', icon: CheckCircle },
+  'Cancelado':    { color: 'bg-red-50 text-red-700 border-red-100/30',      icon: XCircle },
 };
 
 type KanbanStage = {
@@ -102,7 +103,8 @@ export function ClientsPage() {
     notes: '',
     execution_status: 'A iniciar',
     pending_description: '',
-    pending_document_url: ''
+    pending_document_url: '',
+    partner_role: 'Vendedor'
   });
 
   useEffect(() => { if (user) loadData(); }, [user]);
@@ -178,6 +180,7 @@ export function ClientsPage() {
       execution_status: d.execution_status || 'A iniciar',
       pending_description: d.pending_description || '',
       pending_document_url: d.pending_document_url || '',
+      partner_role: d.partner_role || 'Vendedor',
     })));
   };
 
@@ -264,6 +267,7 @@ export function ClientsPage() {
             execution_status: row.execution_status || 'A iniciar',
             pending_description: row.pending_description || null,
             pending_document_url: row.pending_document_url || null,
+            partner_role: row.partner_role || 'Vendedor',
           };
           if (isAdmin) {
             upd.status = row.status;
@@ -277,14 +281,23 @@ export function ClientsPage() {
           if (isClosingDeal) {
             const correctPartnerId = selectedClient?.partner_id;
             if (correctPartnerId && row.product_id) {
-              // Busca commission_value do produto
+              // Busca valores de comissão do produto
               const { data: prodData } = await supabase
                 .from('products')
-                .select('commission_value')
+                .select('commission_value, commission_direct, commission_captador, commission_indicator')
                 .eq('id', row.product_id)
                 .single();
 
-              const commissionAmount = prodData?.commission_value || 0;
+              let commissionAmount = 0;
+              const role = row.partner_role || 'Vendedor';
+
+              if (role === 'Vendedor') {
+                commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
+              } else if (role === 'Captador') {
+                commissionAmount = prodData?.commission_captador || 0;
+              } else if (role === 'Indicador') {
+                commissionAmount = prodData?.commission_indicator || 0;
+              }
 
               if (commissionAmount > 0) {
                 // Upsert na tabela commissions (idempotente via deal_id único)
@@ -319,10 +332,11 @@ export function ClientsPage() {
             product_id: row.product_id || null,
             value: parseFloat(row.value.replace(',', '.')) || 0,
             notes: row.notes || null,
-            status: (!isAdmin && row.status === 'Fechado') ? 'Lead' : row.status,
+            status: (!isAdmin && row.status === 'Fechado' ? 'Lead' : row.status),
             execution_status: row.execution_status || 'A iniciar',
             pending_description: row.pending_description || null,
             pending_document_url: row.pending_document_url || null,
+            partner_role: row.partner_role || 'Vendedor',
           };
           if (isAdmin) ins.payment_method = row.payment_method || null;
           await supabase.from('lead_deals').insert([ins]);
@@ -357,7 +371,8 @@ export function ClientsPage() {
       notes: '',
       execution_status: 'A iniciar',
       pending_description: '',
-      pending_document_url: ''
+      pending_document_url: '',
+      partner_role: 'Vendedor'
     }]);
 
   const updRow = (i: number, f: keyof DealFormRow, v: string) =>
@@ -376,7 +391,8 @@ export function ClientsPage() {
         notes: '',
         execution_status: 'A iniciar',
         pending_description: '',
-        pending_document_url: ''
+        pending_document_url: '',
+        partner_role: 'Vendedor'
       });
       setEditingDealIdx(null);
     }
@@ -473,11 +489,20 @@ export function ClientsPage() {
       if (isClosingDeal && deal.product_id) {
         const { data: prodData } = await supabase
           .from('products')
-          .select('commission_value')
+          .select('commission_value, commission_direct, commission_captador, commission_indicator')
           .eq('id', deal.product_id)
           .single();
 
-        const commissionAmount = prodData?.commission_value || 0;
+        let commissionAmount = 0;
+        const role = (deal as any).partner_role || 'Vendedor';
+
+        if (role === 'Vendedor') {
+          commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
+        } else if (role === 'Captador') {
+          commissionAmount = prodData?.commission_captador || 0;
+        } else if (role === 'Indicador') {
+          commissionAmount = prodData?.commission_indicator || 0;
+        }
         if (commissionAmount > 0) {
           await supabase.from('commissions').upsert([{
             partner_id: lead.partner_id,
@@ -525,11 +550,20 @@ export function ClientsPage() {
 
       const { data: prodData } = await supabase
         .from('products')
-        .select('commission_value')
+        .select('commission_value, commission_direct, commission_captador, commission_indicator')
         .eq('id', deal.product_id || '')
         .single();
 
-      const commissionAmount = prodData?.commission_value || 0;
+      let commissionAmount = 0;
+      const role = deal.partner_role || 'Vendedor';
+
+      if (role === 'Vendedor') {
+        commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
+      } else if (role === 'Captador') {
+        commissionAmount = prodData?.commission_captador || 0;
+      } else if (role === 'Indicador') {
+        commissionAmount = prodData?.commission_indicator || 0;
+      }
 
       const { error: commError } = await supabase
         .from('commissions')
@@ -540,7 +574,8 @@ export function ClientsPage() {
           product_id: deal.product_id,
           amount: commissionAmount,
           status: 'Disponível',
-          type: 'credit'
+          type: 'credit',
+          notes: `Comissão (${role})`
         }]);
 
       if (commError) throw commError;
@@ -709,33 +744,46 @@ export function ClientsPage() {
                             </td>
                           )}
                           <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1.5">
+                            <div className="flex flex-col">
                               {deals.length === 0 ? (
-                                <span className="text-xs text-slate-400">Nenhum negócio</span>
-                              ) : deals.slice(0, 2).map((d) => (
-                                <div key={d.id} className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-tight", STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700')}>
-                                      {d.status}
-                                    </span>
-                                    {d.status === 'Fechado' && (
-                                      <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase border", 
-                                        EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100')}>
-                                        {(() => {
-                                          const Icon = EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.icon || Clock;
-                                          return <Icon className="w-2.5 h-2.5" />;
-                                        })()}
-                                        {d.execution_status || 'A iniciar'}
+                                <span className="text-xs text-slate-400 italic">Nenhum negócio</span>
+                              ) : (
+                                <div className="space-y-3">
+                                  {deals.slice(0, 2).map((d, idx) => (
+                                    <div key={d.id} className={cn(
+                                      "flex flex-col gap-1.5 pb-2",
+                                      idx === 0 && deals.length > 1 ? "border-b border-slate-100/50" : ""
+                                    )}>
+                                      <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider truncate max-w-[150px]">
+                                        {d.products?.name || 'Produto'}
                                       </span>
-                                    )}
-                                  </div>
-                                  <span className="text-[10px] text-slate-500 font-medium truncate max-w-[120px]">
-                                    {d.products?.name || 'Produto'}
-                                  </span>
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-tight border shadow-none", 
+                                          STATUS_STYLE[d.status] || 'bg-slate-50 text-slate-500 border-slate-100/50'
+                                        )}>
+                                          {d.status}
+                                        </span>
+                                        {d.status === 'Fechado' && (
+                                          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase border shadow-none", 
+                                            EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
+                                            {(() => {
+                                              const Icon = EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.icon || Clock;
+                                              return <Icon className="w-2.5 h-2.5" />;
+                                            })()}
+                                            {d.execution_status || 'A iniciar'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {deals.length > 2 && (
+                                    <div className="pt-1">
+                                      <span className="bg-slate-50 text-slate-400 px-2 py-0.5 rounded-full text-[8px] font-semibold border border-slate-100">
+                                        +{deals.length - 2} mais negócios
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
-                              ))}
-                              {deals.length > 2 && (
-                                <span className="text-[10px] text-slate-400">+{deals.length - 2} mais</span>
                               )}
                             </div>
                           </td>
@@ -802,11 +850,11 @@ export function ClientsPage() {
                                               </td>
                                               <td className="px-5 py-4">
                                                 <div className="flex items-center gap-2">
-                                                  <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter border-2 shadow-sm", 
-                                                    EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-200')}>
+                                                  <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border shadow-none", 
+                                                    EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
                                                     {(() => {
                                                       const Icon = EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.icon || Clock;
-                                                      return <Icon className="w-3.5 h-3.5" />;
+                                                      return <Icon className="w-3 h-3" />;
                                                     })()}
                                                     {d.execution_status || 'A iniciar'}
                                                   </span>
@@ -829,10 +877,10 @@ export function ClientsPage() {
                                                   )}
                                                 </div>
                                               </td>
-                                              <td className="px-5 py-4 font-black text-slate-900 tabular-nums">
+                                              <td className="px-5 py-4 font-semibold text-slate-600 tabular-nums">
                                                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(d.value)}
                                               </td>
-                                              {isAdmin && <td className="px-5 py-4 text-slate-500 font-bold text-[11px]">{d.payment_method || '—'}</td>}
+                                              {isAdmin && <td className="px-5 py-4 text-slate-400 font-medium text-[10px]">{d.payment_method || '—'}</td>}
                                               <td className="px-5 py-4 text-right">
                                                  <div className="flex items-center justify-end gap-2">
                                                   <button onClick={() => copyTrackingLink(client.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white border border-slate-100" title="Link de Acompanhamento">
@@ -909,7 +957,12 @@ export function ClientsPage() {
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-wider mb-0.5">Cliente</p>
-                            <p className="text-sm font-semibold text-slate-700 line-clamp-1 leading-tight">{deal.lead_name}</p>
+                            <div className="flex flex-col gap-0.5">
+                              <p className="text-sm font-semibold text-slate-700 line-clamp-1 leading-tight">{deal.lead_name}</p>
+                              <span className="text-[8px] font-bold text-indigo-500 uppercase tracking-wider bg-indigo-50/50 px-1.5 py-0.5 rounded border border-indigo-100/50 self-start">
+                                {deal.partner_role || 'Vendedor'}
+                              </span>
+                            </div>
                           </div>
                           <div className="flex items-center gap-1 translate-x-2">
                             <button 
@@ -1190,8 +1243,13 @@ export function ClientsPage() {
                             <div className="flex-1 min-w-0">
                                <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-wider mb-0.5">Solução / Produto</p>
                                <p className="text-sm font-semibold text-slate-700 truncate mb-2">
-                                {products.find(p => p.id === deal.product_id)?.name || 'Produto Não Identificado'}
+                               {products.find(p => p.id === deal.product_id)?.name || 'Produto Não Identificado'}
                               </p>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[8px] font-bold text-indigo-500 uppercase tracking-wider bg-indigo-50/50 px-1.5 py-0.5 rounded border border-indigo-100/50">
+                                  {deal.partner_role || 'Vendedor'}
+                                </span>
+                              </div>
                               <div className="flex items-center gap-2">
                                 <span className={cn("px-2.5 py-0.5 rounded-lg text-[9px] font-semibold uppercase tracking-tighter border shadow-sm",
                                   deal.status === 'Fechado' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
@@ -1285,6 +1343,19 @@ export function ClientsPage() {
                   >
                     <option value="">Selecione o produto estratégico...</option>
                     {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Papel no Negócio</label>
+                  <select 
+                    value={tempDeal.partner_role}
+                    onChange={e => setTempDeal({...tempDeal, partner_role: e.target.value})}
+                    className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer uppercase tracking-tighter"
+                  >
+                    <option value="Vendedor">Sou o Vendedor</option>
+                    <option value="Captador">Sou o Captador</option>
+                    <option value="Indicador">Sou o Indicador</option>
                   </select>
                 </div>
 

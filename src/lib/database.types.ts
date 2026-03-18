@@ -19,6 +19,8 @@ export interface Database {
           status: string
           balance: number
           referred_by: string | null
+          partner_type: string | null
+          level: string | null
           created_at: string
         }
         Insert: {
@@ -30,6 +32,8 @@ export interface Database {
           status?: string
           balance?: number
           referred_by?: string | null
+          partner_type?: string | null
+          level?: string | null
           created_at?: string
         }
         Update: {
@@ -41,6 +45,8 @@ export interface Database {
           status?: string
           balance?: number
           referred_by?: string | null
+          partner_type?: string | null
+          level?: string | null
           created_at?: string
         }
         Relationships: []
@@ -54,8 +60,10 @@ export interface Database {
           commission_rate: number
           commission_value: number
           commission_direct: number
+          commission_indicator: number
           commission_lvl1: number
           commission_lvl2: number
+          commission_captador: number | null
           cost: number
           status: string
           link: string | null
@@ -69,8 +77,10 @@ export interface Database {
           commission_rate: number
           commission_value?: number
           commission_direct?: number
+          commission_indicator?: number
           commission_lvl1?: number
           commission_lvl2?: number
+          commission_captador?: number | null
           cost?: number
           status?: string
           link?: string | null
@@ -84,8 +94,10 @@ export interface Database {
           commission_rate?: number
           commission_value?: number
           commission_direct?: number
+          commission_indicator?: number
           commission_lvl1?: number
           commission_lvl2?: number
+          commission_captador?: number | null
           cost?: number
           status?: string
           link?: string | null
@@ -106,6 +118,7 @@ export interface Database {
           execution_status: string | null
           pending_description: string | null
           pending_document_url: string | null
+          partner_role: string | null
           created_at: string
         }
         Insert: {
@@ -120,6 +133,7 @@ export interface Database {
           execution_status?: string | null
           pending_description?: string | null
           pending_document_url?: string | null
+          partner_role?: string | null
           created_at?: string
         }
         Update: {
@@ -134,6 +148,7 @@ export interface Database {
           execution_status?: string | null
           pending_description?: string | null
           pending_document_url?: string | null
+          partner_role?: string | null
           created_at?: string
         }
         Relationships: [
@@ -394,18 +409,27 @@ export interface Database {
           id: number
           login_image_url: string | null
           lead_stages: Json | null
+          min_withdrawal: number
+          withdrawal_fee: number
+          release_days: number
           created_at: string
         }
         Insert: {
           id?: number
           login_image_url?: string | null
           lead_stages?: Json | null
+          min_withdrawal?: number
+          withdrawal_fee?: number
+          release_days?: number
           created_at?: string
         }
         Update: {
           id?: number
           login_image_url?: string | null
           lead_stages?: Json | null
+          min_withdrawal?: number
+          withdrawal_fee?: number
+          release_days?: number
           created_at?: string
         }
         Relationships: []

@@ -7,7 +7,7 @@ export function AdminSettings() {
   const [activeTab, setActiveTab] = useState('commissions');
 
   const tabs = [
-    { id: 'commissions', label: 'Comissões e Níveis', icon: Percent },
+    { id: 'commissions', label: 'Gamificação e Níveis', icon: Award },
     { id: 'financial', label: 'Financeiro e Saques', icon: Wallet },
     { id: 'kanban', label: 'Funil e Kanban', icon: LayoutDashboard },
     { id: 'security', label: 'Segurança', icon: ShieldCheck },
@@ -26,6 +26,12 @@ export function AdminSettings() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [financialSettings, setFinancialSettings] = useState({
+    min_withdrawal: 100,
+    withdrawal_fee: 0,
+    release_days: 30
+  });
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -43,6 +49,11 @@ export function AdminSettings() {
         if (data.lead_stages && Array.isArray(data.lead_stages)) {
           setStages(data.lead_stages as any);
         }
+        setFinancialSettings({
+          min_withdrawal: Number(data.min_withdrawal) || 100,
+          withdrawal_fee: Number(data.withdrawal_fee) || 0,
+          release_days: Number(data.release_days) || 30
+        });
       }
     } catch (error) {
       console.error('Erro ao buscar configuracoes:', error);
@@ -64,6 +75,28 @@ export function AdminSettings() {
     } catch (error: any) {
       console.error('Erro ao salvar etapas:', error);
       alert('Erro ao salvar etapas: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveFinancial = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .update({
+          min_withdrawal: financialSettings.min_withdrawal,
+          withdrawal_fee: financialSettings.withdrawal_fee,
+          release_days: financialSettings.release_days
+        })
+        .eq('id', 1);
+
+      if (error) throw error;
+      alert('Configurações financeiras salvas com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao salvar config financeiras:', error);
+      alert('Erro ao salvar: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -172,10 +205,19 @@ export function AdminSettings() {
           <p className="text-slate-500 mt-1">Defina as regras de negócio, comissionamento e parâmetros globais.</p>
         </div>
         <button 
-          className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
+          onClick={() => {
+            if (activeTab === 'kanban') handleSaveKanbanStages();
+            if (activeTab === 'financial') handleSaveFinancial();
+            if (activeTab === 'commissions') alert('Configurações de níveis salvas (simulação)');
+          }}
           disabled={loading}
+          className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
         >
-          <Save className="w-5 h-5 mr-2" />
+          {loading ? (
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+          ) : (
+            <Save className="w-5 h-5 mr-2" />
+          )}
           Salvar Alterações
         </button>
       </div>
@@ -206,52 +248,6 @@ export function AdminSettings() {
         <div className="flex-1 space-y-6">
           {activeTab === 'commissions' && (
             <div className="space-y-6 animate-in fade-in duration-300">
-              {/* Direct Commissions */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-200">
-                  <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                    <Percent className="w-5 h-5 text-indigo-600" />
-                    Comissionamento Padrão
-                  </h2>
-                  <p className="text-sm text-slate-500 mt-1">Defina as porcentagens base para vendas diretas e rede.</p>
-                </div>
-                <div className="p-6 space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-700">Venda Direta (%)</label>
-                      <div className="relative">
-                        <input type="number" defaultValue={30} className="w-full border border-slate-200 rounded-lg pl-4 pr-10 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">%</span>
-                      </div>
-                      <p className="text-xs text-slate-500">Comissão para quem realizou a venda.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-700">Rede - Nível 1 (%)</label>
-                      <div className="relative">
-                        <input type="number" defaultValue={10} className="w-full border border-slate-200 rounded-lg pl-4 pr-10 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">%</span>
-                      </div>
-                      <p className="text-xs text-slate-500">Comissão para o indicador direto.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-700">Rede - Nível 2 (%)</label>
-                      <div className="relative">
-                        <input type="number" defaultValue={5} className="w-full border border-slate-200 rounded-lg pl-4 pr-10 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">%</span>
-                      </div>
-                      <p className="text-xs text-slate-500">Comissão para o indicador do indicador.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-700">Rede - Nível 3 (%)</label>
-                      <div className="relative">
-                        <input type="number" defaultValue={2} className="w-full border border-slate-200 rounded-lg pl-4 pr-10 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* Partner Levels */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-slate-200 flex items-center justify-between">
@@ -317,16 +313,31 @@ export function AdminSettings() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-700">Valor Mínimo para Saque (R$)</label>
-                      <input type="number" defaultValue={100} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                      <input 
+                        type="number" 
+                        value={financialSettings.min_withdrawal}
+                        onChange={e => setFinancialSettings({...financialSettings, min_withdrawal: Number(e.target.value)})}
+                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" 
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-700">Taxa de Saque (R$)</label>
-                      <input type="number" defaultValue={0} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                      <input 
+                        type="number" 
+                        value={financialSettings.withdrawal_fee}
+                        onChange={e => setFinancialSettings({...financialSettings, withdrawal_fee: Number(e.target.value)})}
+                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" 
+                      />
                       <p className="text-xs text-slate-500">Custo fixo descontado do parceiro por saque.</p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-700">Prazo de Liberação (Dias)</label>
-                      <input type="number" defaultValue={30} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                      <input 
+                        type="number" 
+                        value={financialSettings.release_days}
+                        onChange={e => setFinancialSettings({...financialSettings, release_days: Number(e.target.value)})}
+                        className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" 
+                      />
                       <p className="text-xs text-slate-500">Dias após a venda para o saldo ficar disponível (Garantia).</p>
                     </div>
                   </div>

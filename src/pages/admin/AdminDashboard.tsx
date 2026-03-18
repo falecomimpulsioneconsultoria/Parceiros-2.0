@@ -35,10 +35,10 @@ export function AdminDashboard() {
       const { data: deals } = await supabase
         .from('lead_deals')
         .select(`
-          id, status, value, created_at, partner_id, lead_id, product_id,
+          id, status, value, created_at, partner_id, lead_id, product_id, partner_role,
           leads (name),
           profiles:partner_id (full_name),
-          products (name, commission_value, commission_direct, commission_lvl1, commission_lvl2)
+          products (name, commission_value, commission_direct, commission_lvl1, commission_lvl2, commission_captador, commission_indicator)
         `)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -108,16 +108,28 @@ export function AdminDashboard() {
 
       const commissionsToInsert = [];
 
-      // A. Comissão Direta (Vendedor)
+      // Definir valor da comissão direta baseado no papel
+      let directCommissionAmount = 0;
+      const role = deal.partner_role || 'Vendedor';
+      
+      if (role === 'Vendedor') {
+        directCommissionAmount = deal.products?.commission_direct || deal.products?.commission_value || 0;
+      } else if (role === 'Captador') {
+        directCommissionAmount = deal.products?.commission_captador || 0;
+      } else if (role === 'Indicador') {
+        directCommissionAmount = deal.products?.commission_indicator || 0;
+      }
+
+      // A. Comissão Direta (Vendedor/Captador/Indicador)
       commissionsToInsert.push({
         partner_id: deal.partner_id,
         lead_id: deal.lead_id,
         deal_id: deal.id,
         product_id: deal.product_id,
-        amount: deal.products?.commission_direct || deal.products?.commission_value || 0,
+        amount: directCommissionAmount,
         status: 'Disponível',
         type: 'credit',
-        notes: 'Venda Direta'
+        notes: `Comissão (${role})`
       });
 
       // B. Comissão Nível 1 (Indicador do Vendedor)
@@ -249,7 +261,7 @@ export function AdminDashboard() {
               <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
                 <tr>
                   <th className="px-6 py-4">Produto / Cliente</th>
-                  <th className="px-6 py-4">Parceiro</th>
+                  <th className="px-6 py-4">Parceiro / Papel</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Valor</th>
                   <th className="px-6 py-4 text-right">Ação</th>
@@ -263,7 +275,10 @@ export function AdminDashboard() {
                       <p className="text-xs text-slate-500">Cliente: {d.leads?.name || '—'}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-slate-700">{d.profiles?.full_name || '—'}</p>
+                      <p className="text-slate-700 font-medium">{d.profiles?.full_name || '—'}</p>
+                      <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                        {d.partner_role || 'Vendedor'}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn('px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider', STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700')}>
