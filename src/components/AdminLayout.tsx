@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 const sidebarItems = [
   { icon: LayoutDashboard, label: 'Visão Geral', href: '/admin' },
   { icon: Users, label: 'Parceiros e Usuários', href: '/admin/partners' },
+  { icon: TrendingUp, label: 'Árvore de Rede', href: '/admin/network' },
   { icon: Contact, label: 'Clientes', href: '/admin/clients' },
   { icon: Package, label: 'Produtos', href: '/admin/products' },
   { icon: LayoutDashboard, label: 'Faturamento', href: '/admin/billing' },

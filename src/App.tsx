@@ -29,6 +29,7 @@ import { AdminWithdrawals } from './pages/admin/AdminWithdrawals';
 import { AdminSettings } from './pages/admin/AdminSettings';
 import { AdminCommissions } from './pages/admin/AdminCommissions';
 import { AdminBilling } from './pages/admin/AdminBilling';
+import { AdminNetwork } from './pages/admin/AdminNetwork';
 
 export default function App() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="partners" element={<AdminPartners />} />
+              <Route path="network" element={<AdminNetwork />} />
               <Route path="clients" element={<ClientsPage />} />
               <Route path="products" element={<AdminProducts />} />
               <Route path="billing" element={<AdminBilling />} />

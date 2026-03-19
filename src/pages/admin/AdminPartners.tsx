@@ -509,7 +509,7 @@ export function AdminPartners() {
                           {partner.full_name || partner.email}
                         </option>
                     ))}
-                    <option value="admin-root">Administrador Root (FaleCom)</option>
+                    <option value="admin-root">Impulsione Consultoria</option>
                   </select>
                 </div>
 
@@ -634,7 +634,7 @@ export function AdminPartners() {
                         {partner.full_name || partner.email}
                       </option>
                   ))}
-                  <option value="admin-root">Administrador Root (FaleCom)</option>
+                  <option value="admin-root">Impulsione Consultoria</option>
                 </select>
               </div>
 

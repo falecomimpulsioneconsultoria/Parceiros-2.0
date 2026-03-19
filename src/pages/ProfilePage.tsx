@@ -240,7 +240,7 @@ export function ProfilePage() {
                 <input
                   type="text"
                   readOnly
-                  value={profile?.referred_profile?.full_name || 'Direto / Admin'}
+                  value={profile?.referred_profile?.full_name || 'Direto / Impulsione Consultoria'}
                   className="w-full pl-5 pr-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl opacity-60 cursor-not-allowed text-sm font-bold text-slate-900"
                 />
                 <UserCheck className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400" />
