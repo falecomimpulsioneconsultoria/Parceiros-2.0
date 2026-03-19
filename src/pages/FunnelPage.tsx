@@ -47,8 +47,11 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export function FunnelPage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { user, role, partnerType: authPartnerType } = useAuth();
+  const isAdmin = role === 'admin';
+  const isVendedor = role === 'partner' && authPartnerType?.toLowerCase() === 'vendedor';
+  const isCaptador = role === 'partner' && authPartnerType?.toLowerCase() === 'captador';
+  const isPartner = role === 'partner';
   const [data, setData] = useState<BoardData>({ tasks: {}, columns: {}, columnOrder: [] });
   const [selectedTask, setSelectedTask] = useState<Deal | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -59,31 +62,25 @@ export function FunnelPage() {
   useEffect(() => {
     if (user) {
       fetchDeals();
-      checkAdmin();
     }
   }, [user]);
-
-  const checkAdmin = async () => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user?.id)
-      .single();
-    setIsAdmin(profile?.role === 'admin');
-  };
 
   const fetchDeals = async () => {
     setLoading(true);
     try {
-      const { data: dealsData, error } = await supabase
+      let query = supabase
         .from('lead_deals')
         .select(`
           *,
           leads (*),
           products (name)
-        `)
-        .eq('partner_id', user?.id)
-        .order('created_at', { ascending: false });
+        `);
+
+      if (!isAdmin && !isVendedor) {
+        query = query.or(`partner_id.eq.${user?.id},captador_id.eq.${user?.id}`);
+      }
+      
+      const { data: dealsData, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -311,7 +308,7 @@ export function FunnelPage() {
                     })()}
 
                     {/* Droppable Area */}
-                    <Droppable droppableId={column.id} isDropDisabled={column.id === 'Fechado' && !isAdmin}>
+                    <Droppable droppableId={column.id} isDropDisabled={isCaptador || (column.id === 'Fechado' && !isAdmin && !isVendedor)}>
                       {(provided, snapshot) => (
                         <div
                           ref={provided.innerRef}

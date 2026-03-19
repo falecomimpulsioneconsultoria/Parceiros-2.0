@@ -7,6 +7,7 @@ type Role = 'admin' | 'partner' | 'client';
 type AuthContextType = {
   user: User | null;
   role: Role | null;
+  partnerType: string | null;
   status: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  const [partnerType, setPartnerType] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -38,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchRole(session.user.id);
       } else {
         setRole(null);
+        setPartnerType(null);
         setStatus(null);
         setLoading(false);
       }
@@ -50,12 +53,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('role, status')
+        .select('role, status, partner_type')
         .eq('id', userId)
         .single();
       
       if (data) {
         setRole(data.role as Role);
+        setPartnerType(data.partner_type);
         setStatus(data.status);
       } else {
         // Se não tiver perfil, assume como cliente por padrão
@@ -76,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, status, loading, signOut }}>
+    <AuthContext.Provider value={{ user, role, partnerType, status, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

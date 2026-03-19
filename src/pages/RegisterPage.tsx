@@ -4,6 +4,25 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserPlus, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
+const maskCPF = (value: string) => {
+  return value
+    .replace(/\D/g, '')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+    .replace(/(-\d{2})\d+?$/, '$1');
+};
+
+const maskCNPJ = (value: string) => {
+  return value
+    .replace(/\D/g, '')
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+    .replace(/(-\d{2})\d+?$/, '$1');
+};
+
 export function RegisterPage() {
   const { partnerId } = useParams<{ partnerId: string }>();
   const [searchParams] = useSearchParams();
@@ -14,7 +33,14 @@ export function RegisterPage() {
   const [referrerName, setReferrerName] = useState<string | null>(null);
   const [bgImage, setBgImage] = useState<string | null>(null);
 
-  const [form, setForm] = useState({ fullName: '', email: '', password: '', confirmPassword: '' });
+  const [form, setForm] = useState({ 
+    fullName: '', 
+    email: '', 
+    password: '', 
+    confirmPassword: '',
+    cpf: '',
+    personType: 'PF' as 'PF' | 'PJ'
+  });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +94,19 @@ export function RegisterPage() {
 
     setLoading(true);
     try {
+      // Validação de Duplicidade de CPF/CNPJ antes de criar a conta
+      if (form.cpf) {
+        const { data: existingCpf } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('cpf', form.cpf)
+          .maybeSingle();
+        
+        if (existingCpf) {
+          throw new Error(`${form.personType === 'PF' ? 'CPF' : 'CNPJ'} já cadastrado por outro parceiro.`);
+        }
+      }
+
       // 1. Cria a conta no Supabase Auth
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: form.email,
@@ -88,6 +127,8 @@ export function RegisterPage() {
             role: 'partner',
             referred_by: partnerId || null,
             partner_type: type,
+            cpf: form.cpf || null,
+            person_type: form.personType
           })
           .eq('id', authData.user.id);
 
@@ -194,6 +235,37 @@ export function RegisterPage() {
                 placeholder="Seu nome completo"
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all text-sm"
               />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1">
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Tipo</label>
+                <select
+                  value={form.personType}
+                  onChange={e => setForm({ ...form, personType: e.target.value as 'PF' | 'PJ', cpf: '' })}
+                  className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all text-sm"
+                >
+                  <option value="PF">PF</option>
+                  <option value="PJ">PJ</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  {form.personType === 'PF' ? 'CPF' : 'CNPJ'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder={form.personType === 'PF' ? "000.000.000-00" : "00.000.000/0000-00"}
+                  value={form.cpf}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const masked = form.personType === 'PF' ? maskCPF(val) : maskCNPJ(val);
+                    setForm({ ...form, cpf: masked });
+                  }}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all text-sm"
+                />
+              </div>
             </div>
 
             <div>

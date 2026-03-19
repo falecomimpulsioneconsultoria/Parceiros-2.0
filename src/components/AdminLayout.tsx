@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Contact, DollarSign, Settings, LogOut, Shield, Package, ChevronLeft, ChevronRight, TrendingUp, Wallet } from 'lucide-react';
+import { LayoutDashboard, Users, Contact, DollarSign, Settings, LogOut, Shield, Package, ChevronLeft, ChevronRight, TrendingUp, Wallet, User } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,7 @@ const sidebarItems = [
   { icon: DollarSign, label: 'Extrato de Comissões', href: '/admin/commissions' },
   { icon: Wallet, label: 'Saques Pendentes', href: '/admin/withdrawals' },
   { icon: Settings, label: 'Configurações', href: '/admin/settings' },
+  { icon: User, label: 'Meu Perfil', href: '/admin/profile' },
 ];
 
 export function AdminLayout() {

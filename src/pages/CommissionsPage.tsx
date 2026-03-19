@@ -8,6 +8,7 @@ import type { Database } from '../lib/database.types';
 type Commission = Database['public']['Tables']['commissions']['Row'] & {
   leads?: { name: string } | null;
   products?: { name: string } | null;
+  type?: 'credit' | 'debit';
 };
 
 type Withdrawal = Database['public']['Tables']['withdrawals']['Row'];
@@ -23,29 +24,17 @@ export function CommissionsPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { user, role, partnerType: authPartnerType } = useAuth();
+  const isAdmin = role === 'admin';
+  const isVendedor = role === 'partner' && authPartnerType?.toLowerCase() === 'vendedor';
+  const isCaptador = role === 'partner' && authPartnerType?.toLowerCase() === 'captador';
 
   useEffect(() => {
     if (user) {
-      checkAdminStatus();
       fetchData();
     }
-  }, [user]);
+  }, [user, role, authPartnerType]);
 
-  const checkAdminStatus = async () => {
-    try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user?.id)
-        .single();
-      
-      setIsAdmin(data?.role === 'admin');
-    } catch (error) {
-      console.error('Error checking admin status:', error);
-    }
-  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -64,7 +53,7 @@ export function CommissionsPage() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!isAdmin) {
+      if (!isAdmin && !isVendedor) {
         commQuery = commQuery.eq('partner_id', user?.id);
         withQuery = withQuery.eq('partner_id', user?.id);
       }
@@ -200,7 +189,7 @@ export function CommissionsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Extrato Financeiro</h1>
           <p className="text-slate-500 mt-1">Acompanhe seus ganhos e movimentações.</p>
         </div>
-        {!isAdmin && (
+        {role === 'partner' && (
           <button 
             onClick={() => setIsWithdrawModalOpen(true)}
             className="inline-flex items-center justify-center px-4 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"

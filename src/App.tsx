@@ -17,6 +17,7 @@ import { LeadCapturePage } from './pages/LeadCapturePage';
 import { RegisterPage } from './pages/RegisterPage';
 import { NetworkClientsPage } from './pages/NetworkClientsPage';
 import { ClientTrackingPage } from './pages/ClientTrackingPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 // Admin Pages
 import { AdminLayout } from './components/AdminLayout';
@@ -52,6 +53,7 @@ export default function App() {
               <Route path="network-clients" element={<NetworkClientsPage />} />
               <Route path="funnel" element={<FunnelPage />} />
               <Route path="commissions" element={<CommissionsPage />} />
+              <Route path="profile" element={<ProfilePage />} />
             </Route>
           </Route>
 
@@ -66,6 +68,7 @@ export default function App() {
               <Route path="commissions" element={<AdminCommissions />} />
               <Route path="withdrawals" element={<AdminWithdrawals />} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="profile" element={<ProfilePage />} />
             </Route>
           </Route>
 

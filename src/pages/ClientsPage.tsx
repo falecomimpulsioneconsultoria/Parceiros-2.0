@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Filter, Mail, Phone, UserPlus, CheckCircle2, X, Package, AlertCircle, CreditCard, Plus, Trash2, ShoppingBag, ChevronDown, ChevronRight, TrendingUp, Clock, PlayCircle, PauseCircle, CheckCircle, XCircle, Info, ExternalLink, DollarSign, Link as LinkIcon, Copy, Edit3 } from 'lucide-react';
+import { Users, Search, Filter, Mail, Phone, UserPlus, CheckCircle2, X, Package, AlertCircle, CreditCard, Plus, Trash2, ShoppingBag, ChevronDown, ChevronRight, TrendingUp, Clock, PlayCircle, PauseCircle, CheckCircle, XCircle, Info, ExternalLink, DollarSign, Link as LinkIcon, Copy, Edit3, Eye } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,11 +7,14 @@ import type { Database } from '../lib/database.types';
 
 type Lead = Database['public']['Tables']['leads']['Row'] & {
   profiles?: { full_name: string, email: string } | null;
+  captador?: { full_name: string, email: string }[] | { full_name: string, email: string } | null;
   lead_deals?: LeadDeal[];
+  captador_id?: string | null;
 };
 type Product = Database['public']['Tables']['products']['Row'];
 type LeadDeal = Database['public']['Tables']['lead_deals']['Row'] & {
   products?: { name: string } | null;
+  captador_id?: string | null;
 };
 
 type DealFormRow = {
@@ -69,8 +72,11 @@ export function ClientsPage() {
   const [savingDeals, setSavingDeals] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const { user }    = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { user, role, partnerType: authPartnerType, loading: authLoading } = useAuth();
+  const isAdmin = role === 'admin';
+  const isVendedor = role === 'partner' && authPartnerType?.toLowerCase() === 'vendedor';
+  const isCaptador = role === 'partner' && authPartnerType?.toLowerCase() === 'captador';
+  const isPartner = role === 'partner';
 
   // Client form — personal info only
   const [formData, setFormData] = useState({ 
@@ -107,28 +113,26 @@ export function ClientsPage() {
     partner_role: 'Vendedor'
   });
 
-  useEffect(() => { if (user) loadData(); }, [user]);
+  useEffect(() => { 
+    if (user?.id && !authLoading) { 
+      loadData(); 
+    } 
+  }, [user?.id, role, authLoading]);
 
   // ─── Data loading ───────────────────────────────────────────────────────────
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const { data: profileData } = await supabase
-        .from('profiles').select('role').eq('id', user?.id).single();
-      const adminFlag = profileData?.role === 'admin';
-      setIsAdmin(adminFlag);
-
       const { data: productsData } = await supabase
         .from('products').select('*').eq('status', 'Ativo');
       if (productsData) setProducts(productsData);
 
-      // Fetch leads with their deals and profiles
+      // Fetch leads with their deals (manual join for profiles due to cache issue)
       let query = supabase
         .from('leads')
         .select(`
           *,
-          profiles (full_name, email),
           lead_deals (
             id, status, value, payment_method, notes, product_id, created_at,
             execution_status, pending_description, pending_document_url,
@@ -137,13 +141,42 @@ export function ClientsPage() {
         `)
         .order('created_at', { ascending: false });
 
-      if (!adminFlag) query = query.eq('partner_id', user?.id);
+      if (!isAdmin && !isVendedor) {
+        query = query.or(`partner_id.eq.${user?.id},captador_id.eq.${user?.id}`);
+      }
 
       const { data: leadsData, error } = await query;
       if (error) throw error;
-      setLeads((leadsData as Lead[]) || []);
 
-      setLeads((leadsData as Lead[]) || []);
+      // Manual Fetch of Profiles (Bypassing Join Cache Error)
+      const allLeads = leadsData || [];
+      const profileIds = Array.from(new Set([
+        ...allLeads.map(l => l.partner_id),
+        ...allLeads.map(l => l.captador_id)
+      ].filter(Boolean)));
+
+      let profilesMap: Record<string, { full_name: string, email: string }> = {};
+      if (profileIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', profileIds);
+        
+        if (profilesData) {
+          profilesData.forEach(p => {
+            profilesMap[p.id] = { full_name: p.full_name || '', email: p.email || '' };
+          });
+        }
+      }
+
+      // Merge profiles into leads
+      const processedLeads = allLeads.map(lead => ({
+        ...lead,
+        profiles: lead.partner_id ? profilesMap[lead.partner_id] : null,
+        captador: lead.captador_id ? profilesMap[lead.captador_id] : null
+      }));
+
+      setLeads(processedLeads as any);
 
       // Buscar estágios do sistema
       const { data: settingsData } = await supabase
@@ -155,9 +188,9 @@ export function ClientsPage() {
       if (settingsData?.lead_stages) {
         setStages(settingsData.lead_stages as unknown as KanbanStage[]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao buscar dados:', error);
-      setMessage({ type: 'error', text: 'Não foi possível carregar os clientes.' });
+      setMessage({ type: 'error', text: `Erro ao carregar dados: ${error.message || 'Erro desconhecido'}` });
     } finally {
       setLoading(false);
     }
@@ -213,9 +246,14 @@ export function ClientsPage() {
           .eq('id', selectedClient.id);
         if (error) throw error;
       } else {
+        // Se for parceiro, verifica se tem um vendedor acima (referred_by)
+        const { data: profile } = await supabase.from('profiles').select('referred_by').eq('id', user?.id).single();
+        const referrerId = profile?.referred_by;
+
         const { data, error } = await supabase.from('leads')
           .insert([{ 
-            partner_id: user?.id as string, 
+            partner_id: isPartner && !isVendedor && referrerId ? referrerId : (user?.id as string),
+            captador_id: isPartner && !isVendedor && referrerId ? user?.id : null,
             name: formData.name, 
             email: formData.email, 
             phone: formData.phone || null,
@@ -300,35 +338,43 @@ export function ClientsPage() {
               }
 
               if (commissionAmount > 0) {
-                // Upsert na tabela commissions (idempotente via deal_id único)
-                await supabase.from('commissions').upsert([{
-                  partner_id: correctPartnerId,
-                  lead_id: leadId,
-                  deal_id: row.id,
-                  product_id: row.product_id,
-                  amount: commissionAmount,
-                  status: 'Pendente',
-                }], { onConflict: 'deal_id', ignoreDuplicates: false });
+                const commissionPartnerId = (role === 'Captador' && selectedClient?.captador_id) 
+                  ? selectedClient.captador_id 
+                  : correctPartnerId;
 
-                // Atualiza o saldo do parceiro
-                const { data: profileData } = await supabase
-                  .from('profiles')
-                  .select('balance')
-                  .eq('id', correctPartnerId)
-                  .single();
-                const currentBalance = profileData?.balance || 0;
-                await supabase.from('profiles')
-                  .update({ balance: currentBalance + commissionAmount })
-                  .eq('id', correctPartnerId);
+                if (commissionPartnerId) {
+                  // Upsert na tabela commissions (idempotente via deal_id único)
+                  await supabase.from('commissions').upsert([{
+                    partner_id: commissionPartnerId,
+                    lead_id: leadId,
+                    deal_id: row.id,
+                    product_id: row.product_id,
+                    amount: commissionAmount,
+                    status: 'Pendente',
+                  }], { onConflict: 'deal_id', ignoreDuplicates: false });
+
+                  // Atualiza o saldo do parceiro correto
+                  const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('balance')
+                    .eq('id', commissionPartnerId)
+                    .single();
+                  const currentBalance = profileData?.balance || 0;
+                  await supabase.from('profiles')
+                    .update({ balance: currentBalance + commissionAmount })
+                    .eq('id', commissionPartnerId);
+                }
               }
             }
           }
         } else {
-          // INSERT: usa o partner_id do lead (dono do cliente)
           const correctPartnerId = selectedClient?.partner_id || user?.id as string;
+          const leadCaptadorId = selectedClient?.captador_id;
+          
           const ins: any = {
             lead_id: leadId,
             partner_id: correctPartnerId,
+            captador_id: leadCaptadorId || null,
             product_id: row.product_id || null,
             value: parseFloat(row.value.replace(',', '.')) || 0,
             notes: row.notes || null,
@@ -504,24 +550,30 @@ export function ClientsPage() {
           commissionAmount = prodData?.commission_indicator || 0;
         }
         if (commissionAmount > 0) {
-          await supabase.from('commissions').upsert([{
-            partner_id: lead.partner_id,
-            lead_id: lead.id,
-            deal_id: deal.id,
-            product_id: deal.product_id,
-            amount: commissionAmount,
-            status: 'Pendente',
-          }], { onConflict: 'deal_id' });
+          const commissionPartnerId = (role === 'Captador' && lead.captador_id) 
+            ? lead.captador_id 
+            : lead.partner_id;
 
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('balance')
-            .eq('id', lead.partner_id)
-            .single();
-          
-          await supabase.from('profiles')
-            .update({ balance: (profileData?.balance || 0) + commissionAmount })
-            .eq('id', lead.partner_id);
+          if (commissionPartnerId) {
+            await supabase.from('commissions').upsert([{
+              partner_id: commissionPartnerId,
+              lead_id: lead.id,
+              deal_id: deal.id,
+              product_id: deal.product_id,
+              amount: commissionAmount,
+              status: 'Pendente',
+            }], { onConflict: 'deal_id' });
+
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('balance')
+              .eq('id', commissionPartnerId)
+              .single();
+            
+            await supabase.from('profiles')
+              .update({ balance: (profileData?.balance || 0) + commissionAmount })
+              .eq('id', commissionPartnerId);
+          }
         }
       }
 
@@ -565,10 +617,14 @@ export function ClientsPage() {
         commissionAmount = prodData?.commission_indicator || 0;
       }
 
+      const commissionPartnerId = (role === 'Captador' && deal.captador_id) 
+        ? deal.captador_id 
+        : partnerId;
+
       const { error: commError } = await supabase
         .from('commissions')
         .insert([{
-          partner_id: partnerId,
+          partner_id: commissionPartnerId,
           lead_id: leadId,
           deal_id: deal.id,
           product_id: deal.product_id,
@@ -654,7 +710,7 @@ export function ClientsPage() {
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Valor em Pipeline</p>
             <p className="text-xl font-semibold text-slate-900">
               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                leads.reduce((acc, lead) => acc + (lead.lead_deals?.filter(d => d.status !== 'Fechado' && d.status !== 'Perdido').reduce((s, deal) => s + (parseFloat(deal.value) || 0), 0) || 0), 0)
+                leads.reduce((acc, lead) => acc + (lead.lead_deals?.filter(d => d.status !== 'Fechado' && d.status !== 'Perdido').reduce((s, deal) => s + (Number(deal.value) || 0), 0) || 0), 0)
               )}
             </p>
           </div>
@@ -732,15 +788,23 @@ export function ClientsPage() {
                           <td className="px-4 py-3">
                             <div className="font-medium text-slate-900">{client.name}</div>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-0.5 text-xs">
-                              <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400" />{client.email}</span>
-                              {client.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400" />{client.phone}</span>}
-                            </div>
-                          </td>
                           {isAdmin && (
                             <td className="px-4 py-3 text-xs text-slate-600">
                               {client.profiles?.full_name || client.profiles?.email || '-'}
+                            </td>
+                          )}
+                          {(isAdmin || isPartner) && (
+                            <td className="px-4 py-3 text-xs text-slate-600">
+                              {client.captador ? (
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Captador</span>
+                                  <span>
+                                    {Array.isArray(client.captador) 
+                                      ? (client.captador[0]?.full_name || client.captador[0]?.email || '-')
+                                      : ((client.captador as any).full_name || (client.captador as any).email || '-')}
+                                  </span>
+                                </div>
+                              ) : '-'}
                             </td>
                           )}
                           <td className="px-4 py-3">
@@ -791,14 +855,10 @@ export function ClientsPage() {
                             {new Date(client.created_at).toLocaleDateString('pt-BR')}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {isAdmin || deals.every(d => d.status !== 'Fechado') ? (
-                              <button onClick={() => openEditModal(client)}
-                                className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline">
-                                Editar
-                              </button>
-                            ) : (
-                              <span className="text-xs font-medium text-slate-300">Somente Leitura</span>
-                            )}
+                            <button onClick={() => openEditModal(client)}
+                              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline">
+                              {isCaptador ? 'Visualizar' : 'Editar'}
+                            </button>
                           </td>
                         </tr>
 
@@ -1097,7 +1157,8 @@ export function ClientsPage() {
                           <input type={type} required={field !== 'phone'} placeholder={placeholder}
                             value={(formData as any)[field]}
                             onChange={e => setFormData({ ...formData, [field]: e.target.value })}
-                            className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all placeholder:text-slate-300" />
+                            readOnly={isCaptador && isEditModalOpen}
+                            className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all placeholder:text-slate-300 read-only:opacity-70 read-only:cursor-default" />
                         </div>
                       ))}
                     </div>
@@ -1114,28 +1175,32 @@ export function ClientsPage() {
                         <input type="text" placeholder="000.000.000-00"
                           value={formData.cpf}
                           onChange={e => setFormData({ ...formData, cpf: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isCaptador && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">RG</label>
                         <input type="text" placeholder="00.000.000-0"
                           value={formData.rg}
                           onChange={e => setFormData({ ...formData, rg: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Data de Nascimento</label>
                         <input type="date"
                           value={formData.birth_date}
                           onChange={e => setFormData({ ...formData, birth_date: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Gênero</label>
                         <select
                           value={formData.gender}
                           onChange={e => setFormData({ ...formData, gender: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer"
+                          disabled={isCaptador && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer disabled:opacity-70"
                         >
                           <option value="">Selecione...</option>
                           <option value="Masculino">Masculino</option>
@@ -1158,42 +1223,48 @@ export function ClientsPage() {
                         <input type="text" placeholder="00000-000"
                           value={formData.address_zip_code}
                           onChange={e => setFormData({ ...formData, address_zip_code: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5 sm:col-span-3">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Logradouro</label>
                         <input type="text" placeholder="Nome da rua ou avenida"
                           value={formData.address_street}
                           onChange={e => setFormData({ ...formData, address_street: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Nº</label>
                         <input type="text" placeholder="Ex: 123"
                           value={formData.address_number}
                           onChange={e => setFormData({ ...formData, address_number: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5 sm:col-span-2">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Complemento</label>
                         <input type="text" placeholder="Apto, Bloco, etc."
                           value={formData.address_complement}
                           onChange={e => setFormData({ ...formData, address_complement: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5 sm:col-span-2">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Bairro</label>
                         <input type="text" placeholder="Ex: Centro"
                           value={formData.address_neighborhood}
                           onChange={e => setFormData({ ...formData, address_neighborhood: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Cidade</label>
                         <input type="text"
                           value={formData.address_city}
                           onChange={e => setFormData({ ...formData, address_city: e.target.value })}
-                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all" />
+                          readOnly={isPartner && isEditModalOpen}
+                          className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>
                       <div className="space-y-1.5 text-center">
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">UF</label>
@@ -1218,10 +1289,12 @@ export function ClientsPage() {
                         <span className="text-[10px] font-semibold text-white bg-indigo-500 px-2 py-0.5 rounded-md">{dealRows.length}</span>
                       </h4>
                     </div>
-                    <button type="button" onClick={() => openDealModal()}
-                      className="inline-flex items-center px-4 py-2 text-[11px] font-semibold text-indigo-600 bg-indigo-50/50 rounded-xl hover:bg-indigo-600 hover:text-white transition-all border border-indigo-100/50 uppercase tracking-tighter shadow-sm">
-                      <Plus className="w-4 h-4 mr-1.5" />Adicionar Lançamento
-                    </button>
+                    {(!isCaptador || isAddModalOpen) && (
+                      <button type="button" onClick={() => openDealModal()}
+                        className="inline-flex items-center px-4 py-2 text-[11px] font-semibold text-indigo-600 bg-indigo-50/50 rounded-xl hover:bg-indigo-600 hover:text-white transition-all border border-indigo-100/50 uppercase tracking-tighter shadow-sm">
+                        <Plus className="w-4 h-4 mr-1.5" />Adicionar Lançamento
+                      </button>
+                    )}
                   </div>
 
                   {dealRows.length === 0 ? (
@@ -1266,12 +1339,14 @@ export function ClientsPage() {
                             <div className="flex gap-2">
                               <button type="button" onClick={() => openDealModal(deal, i)}
                                 className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white hover:shadow-md rounded-xl transition-all border border-transparent hover:border-slate-100">
-                                <Edit3 className="w-4 h-4" />
+                                {(isCaptador || isVendedor) ? <Eye className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
                               </button>
-                              <button type="button" onClick={() => handleDeleteDeal(deal.id, i)}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-white hover:shadow-md rounded-xl transition-all border border-transparent hover:border-slate-100">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {!(isCaptador || isVendedor) && (
+                                <button type="button" onClick={() => handleDeleteDeal(deal.id, i)}
+                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-white hover:shadow-md rounded-xl transition-all border border-transparent hover:border-slate-100">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </div>
                           {deal.notes && (
@@ -1297,12 +1372,14 @@ export function ClientsPage() {
                 <div className="flex gap-6 items-center">
                   <button type="button" onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}
                     className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">
-                    Descartar Alterações
+                    {(isCaptador || isVendedor) && isEditModalOpen ? 'Fechar' : 'Descartar Alterações'}
                   </button>
-                  <button type="submit" disabled={loading || savingDeals}
-                    className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-sm transition-all uppercase tracking-[0.1em] text-[11px] disabled:opacity-50 active:scale-[0.98]">
-                    {loading || savingDeals ? 'Sincronizando...' : 'Confirmar e Salvar Dados'}
-                  </button>
+                  {(!(isCaptador || isVendedor) || isAddModalOpen) && (
+                    <button type="submit" disabled={loading || savingDeals}
+                      className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-sm transition-all uppercase tracking-[0.1em] text-[11px] disabled:opacity-50 active:scale-[0.98]">
+                      {loading || savingDeals ? 'Sincronizando...' : 'Confirmar e Salvar Dados'}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
@@ -1338,7 +1415,7 @@ export function ClientsPage() {
                   <select 
                     value={tempDeal.product_id}
                     onChange={e => setTempDeal({...tempDeal, product_id: e.target.value})}
-                    disabled={!isAdmin && !!tempDeal.id}
+                    disabled={(!isAdmin && !isVendedor) && !!tempDeal.id}
                     className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione o produto estratégico...</option>
@@ -1351,7 +1428,8 @@ export function ClientsPage() {
                   <select 
                     value={tempDeal.partner_role}
                     onChange={e => setTempDeal({...tempDeal, partner_role: e.target.value})}
-                    className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer uppercase tracking-tighter"
+                    disabled={(isCaptador || isVendedor) && isEditModalOpen}
+                    className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer uppercase tracking-tighter disabled:opacity-70"
                   >
                     <option value="Vendedor">Sou o Vendedor</option>
                     <option value="Captador">Sou o Captador</option>
@@ -1369,7 +1447,8 @@ export function ClientsPage() {
                     <select 
                       value={tempDeal.status}
                       onChange={e => setTempDeal({...tempDeal, status: e.target.value})}
-                      className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer uppercase tracking-tighter"
+                      disabled={(isCaptador || isVendedor) && isEditModalOpen}
+                      className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer uppercase tracking-tighter disabled:opacity-70"
                     >
                       <option value="Lead">Lead</option>
                       <option value="Em Negociação">Em Negociação</option>
@@ -1393,7 +1472,7 @@ export function ClientsPage() {
                 </div>
               </div>
 
-              {isAdmin && (
+              {(isAdmin || isVendedor) && (
                 <div className="space-y-6 pt-6 border-t border-slate-100">
                    <div className="flex items-center gap-3 mb-2">
                     <div className="w-1 h-3.5 bg-emerald-500 rounded-full" />

@@ -8,7 +8,7 @@ type Product = {
   id: string;
   name: string;
   description: string | null;
-  price: string;
+  price: number;
   link: string;
 };
 
@@ -175,12 +175,22 @@ export function LeadCapturePage() {
       // Save to Supabase
       try {
         if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) {
-          // 1. Cria o lead (dados pessoais)
+          // Busca perfil do parceiro para identificar se é captador
+          const { data: partnerProfile } = await supabase
+            .from('profiles')
+            .select('referred_by, role')
+            .eq('id', partnerId)
+            .single();
+
+          const isCaptador = partnerProfile?.role === 'partner' && partnerProfile?.referred_by;
+
           const leadDataInsert: Database['public']['Tables']['leads']['Insert'] = {
             name: newLeadData.name,
             email: newLeadData.email,
             phone: newLeadData.whatsapp,
-            partner_id: partnerId || null,
+            product_id: product.id,
+            partner_id: isCaptador ? (partnerProfile.referred_by || partnerId) : (partnerId || null),
+            captador_id: isCaptador ? partnerId : null,
             status: 'Lead',
             created_at: new Date().toISOString()
           };
@@ -196,10 +206,11 @@ export function LeadCapturePage() {
           if (newLead && partnerId) {
             await supabase.from('lead_deals').insert([{
               lead_id: newLead.id,
-              partner_id: partnerId,
+              partner_id: isCaptador ? (partnerProfile.referred_by || partnerId) : (partnerId || null),
+              captador_id: isCaptador ? (partnerId || null) : null,
               product_id: product.id,
               status: 'Lead',
-              value: parseFloat(product.price) || 0,
+              value: product.price || 0,
             }]);
           }
         }

@@ -23,7 +23,8 @@ export function LinksPage() {
   const [isAffiliating, setIsAffiliating] = useState<string | null>(null);
   const [partnerType, setPartnerType] = useState<string | null>(null);
   
-  const { user } = useAuth();
+  const { user, role, partnerType: authPartnerType } = useAuth();
+  const isCaptador = role === 'partner' && (authPartnerType?.toLowerCase() === 'captador' || partnerType?.toLowerCase() === 'captador');
   const partnerId = user?.id || '';
   const vendedorLink = `${window.location.origin}/ref/${partnerId}?type=vendedor`;
   const captadorLink = `${window.location.origin}/ref/${partnerId}?type=captador`;
@@ -204,68 +205,70 @@ export function LinksPage() {
 
       <div className="space-y-10">
         {/* Links de Indicação de Parceiros */}
-        <section className="space-y-4">
-          <div className="flex items-center gap-2 px-1">
-            <h2 className="text-lg font-semibold text-slate-900">Indicar Novos Parceiros</h2>
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase rounded-full border border-indigo-100/50">Recrutamento</span>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Card Vendedor */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 flex flex-col sm:flex-row items-center gap-6 group hover:border-indigo-200 transition-all">
-              <div className="p-3 bg-indigo-50/50 rounded-xl shrink-0 group-hover:bg-indigo-50 transition-colors">
-                <QRCodeSVG value={vendedorLink} size={100} level="H" includeMargin={false} />
-              </div>
-              <div className="flex-1 space-y-3 w-full text-center sm:text-left">
-                <div>
-                  <h3 className="font-semibold text-slate-900">Link para Vendedor</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Indique novos vendedores para sua rede.</p>
-                </div>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={vendedorLink}
-                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-500 outline-none truncate focus:bg-white transition-colors"
-                  />
-                  <button 
-                    onClick={() => handleCopy(vendedorLink, 'vendedor')}
-                    className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors shrink-0 border border-indigo-100/50"
-                  >
-                    {copied === 'vendedor' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
+        {!isCaptador && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 px-1">
+              <h2 className="text-lg font-semibold text-slate-900">Indicar Novos Parceiros</h2>
+              <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase rounded-full border border-indigo-100/50">Recrutamento</span>
             </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Card Vendedor */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 flex flex-col sm:flex-row items-center gap-6 group hover:border-indigo-200 transition-all">
+                <div className="p-3 bg-indigo-50/50 rounded-xl shrink-0 group-hover:bg-indigo-50 transition-colors">
+                  <QRCodeSVG value={vendedorLink} size={100} level="H" includeMargin={false} />
+                </div>
+                <div className="flex-1 space-y-3 w-full text-center sm:text-left">
+                  <div>
+                    <h3 className="font-semibold text-slate-900">Link para Vendedor</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Indique novos vendedores para sua rede.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={vendedorLink}
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-500 outline-none truncate focus:bg-white transition-colors"
+                    />
+                    <button 
+                      onClick={() => handleCopy(vendedorLink, 'vendedor')}
+                      className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors shrink-0 border border-indigo-100/50"
+                    >
+                      {copied === 'vendedor' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-            {/* Card Captador */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 flex flex-col sm:flex-row items-center gap-6 group hover:border-emerald-200 transition-all">
-              <div className="p-3 bg-emerald-50/50 rounded-xl shrink-0 group-hover:bg-emerald-50 transition-colors">
-                <QRCodeSVG value={captadorLink} size={100} level="H" includeMargin={false} />
-              </div>
-              <div className="flex-1 space-y-3 w-full text-center sm:text-left">
-                <div>
-                  <h3 className="font-semibold text-slate-900">Link para Captador</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Indique captadores de leads parceiros.</p>
+              {/* Card Captador */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 flex flex-col sm:flex-row items-center gap-6 group hover:border-emerald-200 transition-all">
+                <div className="p-3 bg-emerald-50/50 rounded-xl shrink-0 group-hover:bg-emerald-50 transition-colors">
+                  <QRCodeSVG value={captadorLink} size={100} level="H" includeMargin={false} />
                 </div>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={captadorLink}
-                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-500 outline-none truncate focus:bg-white transition-colors"
-                  />
-                  <button 
-                    onClick={() => handleCopy(captadorLink, 'captador')}
-                    className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors shrink-0 border border-emerald-100/50"
-                  >
-                    {copied === 'captador' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </button>
+                <div className="flex-1 space-y-3 w-full text-center sm:text-left">
+                  <div>
+                    <h3 className="font-semibold text-slate-900">Link para Captador</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Indique captadores de leads parceiros.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={captadorLink}
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-500 outline-none truncate focus:bg-white transition-colors"
+                    />
+                    <button 
+                      onClick={() => handleCopy(captadorLink, 'captador')}
+                      className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors shrink-0 border border-emerald-100/50"
+                    >
+                      {copied === 'captador' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Seção de Produtos */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">

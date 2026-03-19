@@ -2,9 +2,14 @@ import { useState, useEffect } from 'react';
 import { Users, DollarSign, TrendingUp, Package, UserPlus, Award, Zap, ChevronRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { cn } from '../lib/utils';
 
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, role, partnerType: authPartnerType } = useAuth();
+  const isAdmin = role === 'admin';
+  const isVendedor = role === 'partner' && authPartnerType?.toLowerCase() === 'vendedor';
+  const showNetwork = isAdmin || isVendedor;
+  const isPartner = role === 'partner';
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     clientesAtivos: 0,
@@ -16,6 +21,7 @@ export function Dashboard() {
   });
   const [referredBy, setReferredBy] = useState<string | null>(null);
   const [partnerName, setPartnerName] = useState<string>('');
+  const [partnerType, setPartnerType] = useState<string>('');
   const [userLevel, setUserLevel] = useState<string>('Afiliado');
 
   useEffect(() => {
@@ -33,16 +39,18 @@ export function Dashboard() {
          .select(`
            full_name,
            email,
-           referred_by,
-           level,
-           referrer:profiles!referred_by(full_name, email)
+            referred_by,
+            level,
+            partner_type,
+            referrer:profiles!referred_by(full_name, email)
          `)
          .eq('id', user?.id)
          .single();
  
-       // @ts-ignore
-       setPartnerName(profileData?.full_name || profileData?.email || '');
-       setUserLevel(profileData?.level || 'Afiliado');
+        // @ts-ignore
+        setPartnerName(profileData?.full_name || profileData?.email || '');
+        setPartnerType(profileData?.partner_type || '');
+        setUserLevel(profileData?.level || 'Afiliado');
 
       if (profileData?.referrer) {
         // @ts-ignore
@@ -53,7 +61,7 @@ export function Dashboard() {
       const { data: leadsData } = await supabase
         .from('leads')
         .select('id')
-        .eq('partner_id', user?.id);
+        .or(`partner_id.eq.${user?.id},captador_id.eq.${user?.id}`);
 
       const clientesAtivos = leadsData?.length || 0;
 
@@ -61,7 +69,7 @@ export function Dashboard() {
       const { data: dealsData } = await supabase
         .from('lead_deals')
         .select('status, value')
-        .eq('partner_id', user?.id);
+        .or(`partner_id.eq.${user?.id},captador_id.eq.${user?.id}`);
 
       const deals = (dealsData as any[]) || [];
       const produtosVendidos = deals.filter(d => d.status === 'Fechado').length;
@@ -107,21 +115,33 @@ export function Dashboard() {
     { name: 'Negócios Fechados', value: stats.produtosVendidos.toString(), icon: Package, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { name: 'Volume de Vendas', value: fmt(stats.valorFechado), icon: DollarSign, color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { name: 'Comissões Geradas', value: fmt(stats.comissoesMes), icon: DollarSign, color: 'text-violet-600', bg: 'bg-violet-50' },
-    { name: 'Parceiros na Rede', value: stats.parceirosRede.toString(), icon: UserPlus, color: 'text-sky-600', bg: 'bg-sky-50' },
+    ...(showNetwork ? [{ name: 'Parceiros na Rede', value: stats.parceirosRede.toString(), icon: UserPlus, color: 'text-sky-600', bg: 'bg-sky-50' }] : []),
   ];
 
   return (
     <div className="space-y-6 pb-12">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            {partnerName ? (
-              <>Olá, <span className="text-indigo-600">{partnerName.split(' ')[0]}</span>! 👋</>
-            ) : (
-              'Visão Geral'
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900">
+              {partnerName ? (
+                <>Olá, <span className="text-indigo-600">{partnerName.split(' ')[0]}</span>! 👋</>
+              ) : (
+                'Visão Geral'
+              )}
+            </h1>
+            {partnerType && (
+              <span className={cn(
+                "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-[0.15em] border shadow-sm",
+                partnerType.toLowerCase() === 'vendedor' ? "bg-indigo-50 text-indigo-600 border-indigo-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+              )}>
+                {partnerType}
+              </span>
             )}
-          </h1>
-          <p className="text-slate-500 mt-1">Acompanhe seus resultados e de sua rede de parceiros.</p>
+          </div>
+          <p className="text-slate-500 mt-1">
+            {isPartner ? 'Acompanhe seus resultados e performance comercial.' : 'Acompanhe seus resultados e de sua rede de parceiros.'}
+          </p>
         </div>
         {referredBy && (
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full">
@@ -157,7 +177,7 @@ export function Dashboard() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8">
         <div className="p-6 sm:p-8 flex flex-col md:flex-row gap-8 items-center bg-gradient-to-br from-white to-slate-50">
           <div className="flex-shrink-0 relative">
-            <div className="w-24 h-24 bg-indigo-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-indigo-200 rotate-3">
+            <div className="w-24 h-24 bg-indigo-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-indigo-200 rotate-3 transition-transform hover:rotate-0 duration-500">
               <Award className="w-12 h-12" />
             </div>
             <div className="absolute -bottom-2 -right-2 bg-amber-400 text-amber-900 text-[10px] font-black px-2 py-1 rounded-lg shadow-sm uppercase tracking-tighter border-2 border-white">
@@ -229,17 +249,19 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6 mt-8">
+      <div className={cn("grid gap-6 mt-8", !showNetwork ? "grid-cols-1" : "lg:grid-cols-2")}>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col items-center justify-center">
           <TrendingUp className="w-12 h-12 text-slate-300 mb-4" />
           <p className="text-slate-400 font-medium">Gráfico de Vendas</p>
           <p className="text-slate-400 text-sm mt-1">Disponível em breve</p>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col items-center justify-center">
-          <Users className="w-12 h-12 text-slate-300 mb-4" />
-          <p className="text-slate-400 font-medium">Atividade da Rede</p>
-          <p className="text-slate-400 text-sm mt-1">Disponível em breve</p>
-        </div>
+        {showNetwork && (
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col items-center justify-center">
+            <Users className="w-12 h-12 text-slate-300 mb-4" />
+            <p className="text-slate-400 font-medium">Atividade da Rede</p>
+            <p className="text-slate-400 text-sm mt-1">Disponível em breve</p>
+          </div>
+        )}
       </div>
     </div>
   );

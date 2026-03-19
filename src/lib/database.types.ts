@@ -21,7 +21,20 @@ export interface Database {
           referred_by: string | null
           partner_type: string | null
           level: string | null
+          cpf: string | null
+          rg: string | null
+          birth_date: string | null
+          gender: string | null
+          address_zip_code: string | null
+          address_street: string | null
+          address_number: string | null
+          address_complement: string | null
+          address_neighborhood: string | null
+          address_city: string | null
+          address_state: string | null
           created_at: string
+          updated_at: string | null
+          person_type: string | null
         }
         Insert: {
           id: string
@@ -34,7 +47,19 @@ export interface Database {
           referred_by?: string | null
           partner_type?: string | null
           level?: string | null
+          cpf?: string | null
+          rg?: string | null
+          birth_date?: string | null
+          gender?: string | null
+          address_zip_code?: string | null
+          address_street?: string | null
+          address_number?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_city?: string | null
+          address_state?: string | null
           created_at?: string
+          updated_at?: string | null
         }
         Update: {
           id?: string
@@ -47,7 +72,19 @@ export interface Database {
           referred_by?: string | null
           partner_type?: string | null
           level?: string | null
+          cpf?: string | null
+          rg?: string | null
+          birth_date?: string | null
+          gender?: string | null
+          address_zip_code?: string | null
+          address_street?: string | null
+          address_number?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_city?: string | null
+          address_state?: string | null
           created_at?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -119,6 +156,7 @@ export interface Database {
           pending_description: string | null
           pending_document_url: string | null
           partner_role: string | null
+          captador_id: string | null
           created_at: string
         }
         Insert: {
@@ -180,6 +218,7 @@ export interface Database {
           address_neighborhood: string | null
           address_city: string | null
           address_state: string | null
+          captador_id: string | null
         }
         Insert: {
           id?: string
@@ -203,6 +242,7 @@ export interface Database {
           address_neighborhood?: string | null
           address_city?: string | null
           address_state?: string | null
+          captador_id?: string | null
         }
         Update: {
           id?: string
@@ -226,6 +266,7 @@ export interface Database {
           address_neighborhood?: string | null
           address_city?: string | null
           address_state?: string | null
+          captador_id?: string | null
         }
         Relationships: [
           {
