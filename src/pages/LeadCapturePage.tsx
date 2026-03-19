@@ -23,6 +23,7 @@ export function LeadCapturePage() {
   const { productId } = useParams();
   const [searchParams] = useSearchParams();
   const partnerId = searchParams.get('ref');
+  const vendedorId = searchParams.get('v');
   const waNumber = searchParams.get('wa');
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -175,22 +176,36 @@ export function LeadCapturePage() {
       // Save to Supabase
       try {
         if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) {
-          // Busca perfil do parceiro para identificar se é captador
-          const { data: partnerProfile } = await supabase
-            .from('profiles')
-            .select('referred_by, role')
-            .eq('id', partnerId)
-            .single();
+          // 1. Identifica se é captação via captador (usando parâmetro 'v' ou consulta ao banco)
+          let finalPartnerId = partnerId;
+          let finalCaptadorId = null;
 
-          const isCaptador = partnerProfile?.role === 'partner' && partnerProfile?.referred_by;
+          if (vendedorId) {
+            // Se o parâmetro 'v' (vendedor) está presente, sabemos que 'ref' é o captador
+            finalPartnerId = vendedorId;
+            finalCaptadorId = partnerId;
+          } else {
+            // Fallback: Busca perfil do parceiro para identificar se é captador (caso o link seja antigo/sem 'v')
+            const { data: partnerProfile } = await supabase
+              .from('profiles')
+              .select('referred_by, role')
+              .eq('id', partnerId)
+              .single();
+
+            const isCaptador = partnerProfile?.role === 'partner' && partnerProfile?.referred_by;
+            if (isCaptador) {
+              finalPartnerId = partnerProfile.referred_by || partnerId;
+              finalCaptadorId = partnerId;
+            }
+          }
 
           const leadDataInsert: Database['public']['Tables']['leads']['Insert'] = {
             name: newLeadData.name,
             email: newLeadData.email,
             phone: newLeadData.whatsapp,
             product_id: product.id,
-            partner_id: isCaptador ? (partnerProfile.referred_by || partnerId) : (partnerId || null),
-            captador_id: isCaptador ? partnerId : null,
+            partner_id: finalPartnerId || null,
+            captador_id: finalCaptadorId,
             status: 'Lead',
             created_at: new Date().toISOString()
           };
@@ -203,11 +218,11 @@ export function LeadCapturePage() {
           if (leadError) throw leadError;
 
           // 2. Cria o negócio (lead_deal) vinculado ao lead e ao produto capturado
-          if (newLead && partnerId) {
+          if (newLead && finalPartnerId) {
             await supabase.from('lead_deals').insert([{
               lead_id: newLead.id,
-              partner_id: isCaptador ? (partnerProfile.referred_by || partnerId) : (partnerId || null),
-              captador_id: isCaptador ? (partnerId || null) : null,
+              partner_id: finalPartnerId,
+              captador_id: finalCaptadorId,
               product_id: product.id,
               status: 'Lead',
               value: product.price || 0,

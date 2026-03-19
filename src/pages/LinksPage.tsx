@@ -18,6 +18,7 @@ export function LinksPage() {
   const [myAffiliations, setMyAffiliations] = useState<Record<string, { id: string; redirect_phone: string | null }>>({});
   const [productQRCodes, setProductQRCodes] = useState<Record<string, any[]>>({});
   const [profilePhone, setProfilePhone] = useState<string>('');
+  const [profileReferredBy, setProfileReferredBy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'my_products' | 'explore'>('my_products');
   const [isAffiliating, setIsAffiliating] = useState<string | null>(null);
@@ -45,13 +46,14 @@ export function LinksPage() {
       if (partnerId) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('phone, partner_type')
+          .select('phone, partner_type, referred_by')
           .eq('id', partnerId)
           .single();
         
         if (profile) {
           if (profile.phone) setProfilePhone(profile.phone);
           if (profile.partner_type) setPartnerType(profile.partner_type);
+          if (profile.referred_by) setProfileReferredBy(profile.referred_by);
         }
 
         const { data: affiliations, error: affErr } = await supabase
@@ -324,7 +326,8 @@ export function LinksPage() {
                     .map((product) => {
                       const affPhone = myAffiliations[product.id]?.redirect_phone || profilePhone;
                       const phoneParam = affPhone ? `&wa=${affPhone}` : '';
-                      const productLink = `${window.location.origin}/capture/${product.id}?ref=${partnerId}${phoneParam}`;
+                      const referredParam = (isCaptador && profileReferredBy) ? `&v=${profileReferredBy}` : '';
+                      const productLink = `${window.location.origin}/capture/${product.id}?ref=${partnerId}${phoneParam}${referredParam}`;
                       const affiliationId = myAffiliations[product.id]?.id;
                       const qrcodes = productQRCodes[affiliationId] || [];
 
@@ -379,7 +382,10 @@ export function LinksPage() {
                             <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
                               {qrcodes.map((qr) => {
                                 const baseUrl = `${window.location.origin}/capture/${product.id}?ref=${partnerId}`;
-                                const finalUrl = qr.redirect_phone ? `${baseUrl}&wa=${qr.redirect_phone}` : baseUrl;
+                                let finalUrl = qr.redirect_phone ? `${baseUrl}&wa=${qr.redirect_phone}` : baseUrl;
+                                if (isCaptador && profileReferredBy) {
+                                  finalUrl += `&v=${profileReferredBy}`;
+                                }
                                 return (
                                   <button
                                     key={qr.id}
@@ -514,7 +520,10 @@ export function LinksPage() {
                   <div className="grid grid-cols-1 gap-6">
                     {selectedProduct && myAffiliations[selectedProduct.id] && productQRCodes[myAffiliations[selectedProduct.id].id]?.map((qr) => {
                       const baseUrl = `${window.location.origin}/capture/${selectedProduct.id}?ref=${partnerId}`;
-                      const finalUrl = qr.redirect_phone ? `${baseUrl}&wa=${qr.redirect_phone}` : baseUrl;
+                      let finalUrl = qr.redirect_phone ? `${baseUrl}&wa=${qr.redirect_phone}` : baseUrl;
+                      if (isCaptador && profileReferredBy) {
+                        finalUrl += `&v=${profileReferredBy}`;
+                      }
                       return (
                         <div key={qr.id} className="group bg-white rounded-[2rem] border border-slate-100 shadow-sm hover:border-indigo-200 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 relative overflow-hidden">
                           <div className="p-6 space-y-6">
