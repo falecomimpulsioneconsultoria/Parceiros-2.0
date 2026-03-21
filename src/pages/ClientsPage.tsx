@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Filter, Mail, Phone, UserPlus, CheckCircle2, X, Package, AlertCircle, CreditCard, Plus, Trash2, ShoppingBag, ChevronDown, ChevronRight, TrendingUp, Clock, PlayCircle, PauseCircle, CheckCircle, XCircle, Info, ExternalLink, DollarSign, Link as LinkIcon, Copy, Edit3, Eye } from 'lucide-react';
+import { Users, Search, Filter, Mail, Phone, UserPlus, CheckCircle2, X, Package, AlertCircle, CreditCard, Plus, Trash2, ShoppingBag, ChevronDown, ChevronRight, TrendingUp, Clock, PlayCircle, PauseCircle, CheckCircle, XCircle, Info, ExternalLink, DollarSign, Link as LinkIcon, Copy, Edit3, Eye, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,7 +7,7 @@ import type { Database } from '../lib/database.types';
 
 type Lead = Database['public']['Tables']['leads']['Row'] & {
   profiles?: { full_name: string, email: string } | null;
-  captador?: { full_name: string, email: string }[] | { full_name: string, email: string } | null;
+  captador?: { full_name: string, email: string } | null;
   lead_deals?: LeadDeal[];
   captador_id?: string | null;
 };
@@ -15,6 +15,7 @@ type Product = Database['public']['Tables']['products']['Row'];
 type LeadDeal = Database['public']['Tables']['lead_deals']['Row'] & {
   products?: { name: string } | null;
   captador_id?: string | null;
+  payment_status?: 'Pendente' | 'Pago' | 'Cancelado' | null;
 };
 
 type DealFormRow = {
@@ -28,6 +29,7 @@ type DealFormRow = {
   pending_description: string;
   pending_document_url: string;
   partner_role: string;
+  payment_status: 'Pendente' | 'Pago' | 'Cancelado';
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -43,6 +45,12 @@ const EXECUTION_STATUS_STYLE: Record<string, { color: string, icon: any }> = {
   'Pendenciado':  { color: 'bg-amber-50 text-amber-700 border-amber-100/30',   icon: PauseCircle },
   'Concluido':    { color: 'bg-emerald-50 text-emerald-600 border-emerald-100/30', icon: CheckCircle },
   'Cancelado':    { color: 'bg-red-50 text-red-700 border-red-100/30',      icon: XCircle },
+};
+
+const PAYMENT_STATUS_STYLE: Record<string, { color: string, icon: any }> = {
+  'Pago':      { color: 'bg-emerald-50/50 text-emerald-700 border-emerald-200/50', icon: CheckCircle2 },
+  'Pendente':  { color: 'bg-amber-50/50 text-amber-700 border-amber-200/50',  icon: Clock },
+  'Cancelado': { color: 'bg-red-50/50 text-red-700 border-red-200/50',    icon: XCircle },
 };
 
 type KanbanStage = {
@@ -70,7 +78,18 @@ export function ClientsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingDeals, setSavingDeals] = useState(false);
+  const [dealInstallments, setDealInstallments] = useState<Record<string, any[]>>({});
+  const [loadingInstallments, setLoadingInstallments] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  
+  // Estados para Gestão de Vencimento
+  const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+  const [firstDueDate, setFirstDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30); // Padrão: 30 dias a partir de hoje
+    return d.toISOString().split('T')[0];
+  });
+  const [dealToClose, setDealToClose] = useState<{ id: string; newStatus: string } | null>(null);
 
   const { user, role, partnerType: authPartnerType, loading: authLoading } = useAuth();
   const isAdmin = role === 'admin';
@@ -110,7 +129,8 @@ export function ClientsPage() {
     execution_status: 'A iniciar',
     pending_description: '',
     pending_document_url: '',
-    partner_role: 'Vendedor'
+    partner_role: 'Vendedor',
+    payment_status: 'Pendente'
   });
 
   useEffect(() => { 
@@ -124,29 +144,24 @@ export function ClientsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const { data: productsData } = await supabase
-        .from('products').select('*').eq('status', 'Ativo');
-      if (productsData) setProducts(productsData);
-
-      // Fetch leads with their deals (manual join for profiles due to cache issue)
-      let query = supabase
-        .from('leads')
-        .select(`
+      const [{ data: productsData }, { data: leadsData, error: leadsError }, { data: settingsData }] = await Promise.all([
+        supabase.from('products').select('*').eq('status', 'Ativo'),
+        supabase.from('leads').select(`
           *,
           lead_deals (
             id, status, value, payment_method, notes, product_id, created_at,
-            execution_status, pending_description, pending_document_url,
+            execution_status, pending_description, pending_document_url, payment_status,
             products (name)
           )
-        `)
-        .order('created_at', { ascending: false });
+        `).order('created_at', { ascending: false }),
+        supabase.from('system_settings').select('lead_stages').eq('id', 1).single()
+      ]);
 
-      if (!isAdmin && !isVendedor) {
-        query = query.or(`partner_id.eq.${user?.id},captador_id.eq.${user?.id}`);
+      if (leadsError) throw leadsError;
+      if (productsData) setProducts(productsData);
+      if (settingsData?.lead_stages) {
+        setStages(settingsData.lead_stages as unknown as KanbanStage[]);
       }
-
-      const { data: leadsData, error } = await query;
-      if (error) throw error;
 
       // Manual Fetch of Profiles (Bypassing Join Cache Error)
       const allLeads = leadsData || [];
@@ -178,16 +193,6 @@ export function ClientsPage() {
 
       setLeads(processedLeads as any);
 
-      // Buscar estágios do sistema
-      const { data: settingsData } = await supabase
-        .from('system_settings')
-        .select('lead_stages')
-        .eq('id', 1)
-        .single();
-      
-      if (settingsData?.lead_stages) {
-        setStages(settingsData.lead_stages as unknown as KanbanStage[]);
-      }
     } catch (error: any) {
       console.error('Erro ao buscar dados:', error);
       setMessage({ type: 'error', text: `Erro ao carregar dados: ${error.message || 'Erro desconhecido'}` });
@@ -214,6 +219,7 @@ export function ClientsPage() {
       pending_description: d.pending_description || '',
       pending_document_url: d.pending_document_url || '',
       partner_role: d.partner_role || 'Vendedor',
+      payment_status: d.payment_status || 'Pendente',
     })));
   };
 
@@ -310,6 +316,7 @@ export function ClientsPage() {
           if (isAdmin) {
             upd.status = row.status;
             upd.payment_method = row.payment_method || null;
+            upd.payment_status = row.payment_status || 'Pendente'; // Added for admin
           } else if (row.status !== 'Fechado') {
             upd.status = row.status;
           }
@@ -319,50 +326,44 @@ export function ClientsPage() {
           if (isClosingDeal) {
             const correctPartnerId = selectedClient?.partner_id;
             if (correctPartnerId && row.product_id) {
-              // Busca valores de comissão do produto
               const { data: prodData } = await supabase
                 .from('products')
-                .select('commission_value, commission_direct, commission_captador, commission_indicator')
+                .select('commission_value, commission_direct, commission_captador, commission_indicator, payment_type, installment_config')
                 .eq('id', row.product_id)
                 .single();
 
-              let commissionAmount = 0;
-              const role = row.partner_role || 'Vendedor';
+              if (prodData?.payment_type === 'parcelado' && prodData?.installment_config) {
+                const installments = (prodData.installment_config as any[]).map((inst, idx) => ({
+                  deal_id: row.id,
+                  installment_number: idx,
+                  label: inst.label,
+                  value: inst.value,
+                  status: 'Pendente',
+                  commissions_config: inst.commissions
+                }));
+                await (supabase as any).from('deal_installments').insert(installments);
+              } else {
+                let commissionAmount = 0;
+                const role = row.partner_role || 'Vendedor';
+                if (role === 'Vendedor') commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
+                else if (role === 'Captador') commissionAmount = prodData?.commission_captador || 0;
+                else if (role === 'Indicador') commissionAmount = prodData?.commission_indicator || 0;
 
-              if (role === 'Vendedor') {
-                commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
-              } else if (role === 'Captador') {
-                commissionAmount = prodData?.commission_captador || 0;
-              } else if (role === 'Indicador') {
-                commissionAmount = prodData?.commission_indicator || 0;
-              }
+                if (commissionAmount > 0) {
+                  const commissionPartnerId = (role === 'Captador' && selectedClient?.captador_id) ? selectedClient.captador_id : correctPartnerId;
+                  if (commissionPartnerId) {
+                    await supabase.from('commissions').upsert([{
+                      partner_id: commissionPartnerId,
+                      lead_id: leadId,
+                      deal_id: row.id,
+                      product_id: row.product_id,
+                      amount: commissionAmount,
+                      status: 'Pendente',
+                    }], { onConflict: 'deal_id' });
 
-              if (commissionAmount > 0) {
-                const commissionPartnerId = (role === 'Captador' && selectedClient?.captador_id) 
-                  ? selectedClient.captador_id 
-                  : correctPartnerId;
-
-                if (commissionPartnerId) {
-                  // Upsert na tabela commissions (idempotente via deal_id único)
-                  await supabase.from('commissions').upsert([{
-                    partner_id: commissionPartnerId,
-                    lead_id: leadId,
-                    deal_id: row.id,
-                    product_id: row.product_id,
-                    amount: commissionAmount,
-                    status: 'Pendente',
-                  }], { onConflict: 'deal_id', ignoreDuplicates: false });
-
-                  // Atualiza o saldo do parceiro correto
-                  const { data: profileData } = await supabase
-                    .from('profiles')
-                    .select('balance')
-                    .eq('id', commissionPartnerId)
-                    .single();
-                  const currentBalance = profileData?.balance || 0;
-                  await supabase.from('profiles')
-                    .update({ balance: currentBalance + commissionAmount })
-                    .eq('id', commissionPartnerId);
+                    const { data: profileData } = await supabase.from('profiles').select('balance').eq('id', commissionPartnerId).single();
+                    await supabase.from('profiles').update({ balance: (profileData?.balance || 0) + commissionAmount }).eq('id', commissionPartnerId);
+                  }
                 }
               }
             }
@@ -370,7 +371,6 @@ export function ClientsPage() {
         } else {
           const correctPartnerId = selectedClient?.partner_id || user?.id as string;
           const leadCaptadorId = selectedClient?.captador_id;
-          
           const ins: any = {
             lead_id: leadId,
             partner_id: correctPartnerId,
@@ -384,7 +384,10 @@ export function ClientsPage() {
             pending_document_url: row.pending_document_url || null,
             partner_role: row.partner_role || 'Vendedor',
           };
-          if (isAdmin) ins.payment_method = row.payment_method || null;
+          if (isAdmin) {
+            ins.payment_method = row.payment_method || null;
+            ins.payment_status = row.payment_status || 'Pendente'; // Added for admin
+          }
           await supabase.from('lead_deals').insert([ins]);
         }
       }
@@ -418,7 +421,8 @@ export function ClientsPage() {
       execution_status: 'A iniciar',
       pending_description: '',
       pending_document_url: '',
-      partner_role: 'Vendedor'
+      partner_role: 'Vendedor',
+      payment_status: 'Pendente'
     }]);
 
   const updRow = (i: number, f: keyof DealFormRow, v: string) =>
@@ -438,7 +442,8 @@ export function ClientsPage() {
         execution_status: 'A iniciar',
         pending_description: '',
         pending_document_url: '',
-        partner_role: 'Vendedor'
+        partner_role: 'Vendedor',
+        payment_status: 'Pendente'
       });
       setEditingDealIdx(null);
     }
@@ -488,8 +493,32 @@ export function ClientsPage() {
     setIsEditModalOpen(true);
   };
 
-  const toggleExpand = (id: string) =>
-    setExpandedRows(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const loadInstallments = async (dealId: string) => {
+    setLoadingInstallments(prev => ({ ...prev, [dealId]: true }));
+    const { data } = await (supabase as any)
+      .from('deal_installments')
+      .select('*')
+      .eq('deal_id', dealId)
+      .order('installment_number', { ascending: true });
+    if (data) setDealInstallments(prev => ({ ...prev, [dealId]: data }));
+    setLoadingInstallments(prev => ({ ...prev, [dealId]: false }));
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedRows(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id);
+      else {
+        s.add(id);
+        // Ao expandir um cliente, podemos carregar parcelas de seus negócios fechados
+        const lead = leads.find(l => l.id === id);
+        lead?.lead_deals?.forEach(d => {
+          if (d.status === 'Fechado') loadInstallments(d.id);
+        });
+      }
+      return s;
+    });
+  };
 
   const filteredClients = leads.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -510,18 +539,30 @@ export function ClientsPage() {
     );
   }, [leads, searchTerm]);
 
-  const updateDealStatus = async (dealId: string, newStatus: string) => {
+  const updateDealStatus = async (dealId: string, newStatus: string, date?: string) => {
     try {
-      // Encontrar o negócio e o cliente no estado local
       const deal = allDeals.find(d => d.id === dealId);
       const lead = leads.find(l => l.id === deal?.lead_id);
-      
       if (!deal || !lead) return;
 
       const previousStatus = deal.status;
       if (!isAdmin && newStatus === 'Fechado') {
         throw new Error('Apenas administradores podem fechar negócios.');
       }
+
+      const { data: prodData } = await supabase
+        .from('products')
+        .select('payment_type, installment_config, commission_value, commission_direct, commission_captador, commission_indicator')
+        .eq('id', deal.product_id)
+        .single();
+
+      // Se for fechamento de produto parcelado e não temos a data, abrimos o modal
+      if (isAdmin && newStatus === 'Fechado' && previousStatus !== 'Fechado' && prodData?.payment_type === 'parcelado' && !date) {
+        setDealToClose({ id: dealId, newStatus });
+        setIsClosingModalOpen(true);
+        return;
+      }
+
       const isClosingDeal = isAdmin && newStatus === 'Fechado' && previousStatus !== 'Fechado';
 
       const { error } = await supabase
@@ -531,48 +572,126 @@ export function ClientsPage() {
 
       if (error) throw error;
 
-      // Se Fechado, executa mesma lógica de comissão do saveDeals
       if (isClosingDeal && deal.product_id) {
-        const { data: prodData } = await supabase
-          .from('products')
-          .select('commission_value, commission_direct, commission_captador, commission_indicator')
-          .eq('id', deal.product_id)
-          .single();
+        // Busca as configurações da InfinitePay
+        const { data: settings } = await supabase.from('system_settings').select('infinitepay_tag').eq('id', 1).single();
+        const infiniteTag = settings?.infinitepay_tag;
 
-        let commissionAmount = 0;
-        const role = (deal as any).partner_role || 'Vendedor';
-
-        if (role === 'Vendedor') {
-          commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
-        } else if (role === 'Captador') {
-          commissionAmount = prodData?.commission_captador || 0;
-        } else if (role === 'Indicador') {
-          commissionAmount = prodData?.commission_indicator || 0;
-        }
-        if (commissionAmount > 0) {
-          const commissionPartnerId = (role === 'Captador' && lead.captador_id) 
-            ? lead.captador_id 
-            : lead.partner_id;
-
-          if (commissionPartnerId) {
-            await supabase.from('commissions').upsert([{
-              partner_id: commissionPartnerId,
-              lead_id: lead.id,
-              deal_id: deal.id,
-              product_id: deal.product_id,
-              amount: commissionAmount,
-              status: 'Pendente',
-            }], { onConflict: 'deal_id' });
-
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('balance')
-              .eq('id', commissionPartnerId)
-              .single();
+        if (prodData?.payment_type === 'parcelado' && prodData?.installment_config) {
+          const startDate = date ? new Date(date) : new Date();
+          const installments = [];
+          const configArray = prodData.installment_config as any[];
+          for (let idx = 0; idx < configArray.length; idx++) {
+            const inst = configArray[idx];
+            const dueDate = new Date(startDate);
+            dueDate.setMonth(startDate.getMonth() + idx);
             
-            await supabase.from('profiles')
-              .update({ balance: (profileData?.balance || 0) + commissionAmount })
-              .eq('id', commissionPartnerId);
+            const value = inst.value;
+            let payment_link = null;
+            if (infiniteTag) {
+              try {
+                // Chamada à Edge Function para gerar link dinâmico e real
+                const { data: linkData, error: linkError } = await supabase.functions.invoke('generate-infinitepay-link', {
+                  body: { 
+                    dealId: deal.id, 
+                    installmentIndex: idx, 
+                    amount: value,
+                    description: `Parcela ${idx + 1} - ${(prodData as any)?.name || 'Produto'}` 
+                  }
+                });
+                if (!linkError && linkData?.url) {
+                  payment_link = linkData.url;
+                } else {
+                  console.error('Erro ao gerar link via API:', linkError);
+                  // Fallback para link estático se a API falhar (com o novo formato detectado)
+                  const formattedValue = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, useGrouping: false }).format(value);
+                  payment_link = `https://pay.infinitepay.io/${infiniteTag}/${formattedValue}?metadata=${dealId}_${idx}`;
+                }
+              } catch (e) {
+                console.error('Falha na invocação da função:', e);
+              }
+            }
+
+            installments.push({
+              deal_id: deal.id,
+              installment_number: idx,
+              label: inst.label,
+              value: value,
+              status: 'Pendente',
+              due_date: dueDate.toISOString(),
+              commissions_config: inst.commissions,
+              payment_link: payment_link,
+              payment_provider: 'infinitepay'
+            });
+          }
+          await (supabase as any).from('deal_installments').insert(installments);
+        } else {
+          // Lógica À Vista
+          let commissionAmount = 0;
+          const role = (deal as any).partner_role || 'Vendedor';
+
+          if (role === 'Vendedor') {
+            commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
+          } else if (role === 'Captador') {
+            commissionAmount = prodData?.commission_captador || 0;
+          } else if (role === 'Indicador') {
+            commissionAmount = prodData?.commission_indicator || 0;
+          }
+
+          // Gerar link para pagamento à vista também
+          let payment_link = null;
+          if (infiniteTag && deal.value > 0) {
+            try {
+              const { data: linkData, error: linkError } = await supabase.functions.invoke('generate-infinitepay-link', {
+                body: { 
+                  dealId: deal.id, 
+                  amount: deal.value,
+                  description: `Pagamento à Vista - ${(prodData as any)?.name || 'Produto'}` 
+                }
+              });
+              if (!linkError && linkData?.url) {
+                payment_link = linkData.url;
+              } else {
+                const formattedValue = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, useGrouping: false }).format(deal.value);
+                payment_link = `https://pay.infinitepay.io/${infiniteTag}/${formattedValue}?metadata=${dealId}`;
+              }
+            } catch (e) {
+              console.error('Erro link à vista:', e);
+            }
+          }
+          
+          if (payment_link) {
+            await supabase.from('lead_deals').update({ notes: (deal.notes ? deal.notes + '\n' : '') + 'Link Pagamento: ' + payment_link }).eq('id', dealId);
+          }
+          
+          if (commissionAmount > 0) {
+            const commissionPartnerId = (role === 'Captador' && lead.captador_id) 
+              ? lead.captador_id 
+              : lead.partner_id;
+
+            if (commissionPartnerId) {
+              await supabase.from('commissions').upsert([{
+                partner_id: commissionPartnerId,
+                lead_id: lead.id,
+                deal_id: deal.id,
+                product_id: deal.product_id,
+                amount: commissionAmount,
+                status: 'Pendente',
+                notes: `Comissão contrato à vista (${role})`
+              }], { onConflict: 'deal_id' });
+
+              const { data: profileData } = await supabase
+                .from('profiles')
+                .select('balance')
+                .eq('id', commissionPartnerId)
+                .single();
+              
+              if (profileData) {
+                await supabase.from('profiles')
+                  .update({ balance: (profileData.balance || 0) + commissionAmount })
+                  .eq('id', commissionPartnerId);
+              }
+            }
           }
         }
       }
@@ -641,6 +760,67 @@ export function ClientsPage() {
     } catch (error: any) {
       console.error('Erro ao faturar:', error);
       alert('Erro ao faturar: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFaturarParcela = async (installment: any, deal: any, leadId: string) => {
+    try {
+      if (installment.status === 'Pago') return;
+      setLoading(true);
+
+      // 1. Marcar parcela como paga
+      const { error: updError } = await (supabase as any)
+        .from('deal_installments')
+        .update({ status: 'Pago', paid_at: new Date().toISOString() })
+        .eq('id', installment.id);
+      if (updError) throw updError;
+
+      // 2. Gerar comissões configuradas para esta parcela
+      const comms = installment.commissions_config; // { vendedor: val, captador: val, ... }
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) throw new Error('Cliente não encontrado');
+
+      const roles = ['vendedor', 'captador', 'indicador', 'nivel1', 'nivel2'];
+      for (const roleKey of roles) {
+        const amount = comms[roleKey] || 0;
+        if (amount > 0) {
+          let partnerId = null;
+          if (roleKey === 'vendedor') partnerId = lead.partner_id;
+          else if (roleKey === 'captador') partnerId = lead.captador_id;
+          else if (roleKey === 'indicador') {
+              // Busca indicador se houver
+              const { data: leadData } = await supabase.from('leads').select('indicator_id').eq('id', leadId).single();
+              partnerId = (leadData as any)?.indicator_id;
+          }
+          // Níveis 1 e 2 viriam da rede do parceiro (simplificado aqui ou via trigger se complexo)
+          // Mas como o user pediu "comportamento igual ao à vista", vamos usar os IDs disponíveis no lead
+
+          if (partnerId) {
+            await supabase.from('commissions').insert([{
+              partner_id: partnerId,
+              lead_id: leadId,
+              deal_id: deal.id,
+              product_id: deal.product_id,
+              amount: amount,
+              status: 'Disponível',
+              type: 'credit',
+              notes: `Parcela ${installment.label} (${roleKey})`
+            }]);
+
+            const { data: prof } = await supabase.from('profiles').select('balance').eq('id', partnerId).single();
+            await supabase.from('profiles').update({ balance: (prof?.balance || 0) + amount }).eq('id', partnerId);
+          }
+        }
+      }
+
+      alert('Parcela faturada e comissões geradas!');
+      loadInstallments(deal.id);
+      await loadData();
+    } catch (error: any) {
+      console.error('Erro ao faturar parcela:', error);
+      alert('Erro ao faturar parcela: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -827,6 +1007,14 @@ export function ClientsPage() {
                                         )}>
                                           {d.status}
                                         </span>
+                                        <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase border shadow-none", 
+                                            PAYMENT_STATUS_STYLE[d.payment_status || 'Pendente']?.color || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
+                                            {(() => {
+                                              const Icon = PAYMENT_STATUS_STYLE[d.payment_status || 'Pendente']?.icon || Clock;
+                                              return <Icon className="w-2.5 h-2.5" />;
+                                            })()}
+                                            {d.payment_status || 'Pendente'}
+                                          </span>
                                         {d.status === 'Fechado' && (
                                           <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase border shadow-none", 
                                             EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
@@ -897,63 +1085,141 @@ export function ClientsPage() {
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
                                           {deals.map((d) => (
-                                            <tr key={d.id} className="hover:bg-slate-50/50 transition-colors group">
-                                              <td className="px-5 py-4">
-                                                <div className="font-semibold text-slate-800 tracking-tight">{d.products?.name || '—'}</div>
-                                                <div className="text-[10px] text-slate-400 mt-1">{d.notes || 'Sem observações'}</div>
-                                              </td>
-                                              <td className="px-5 py-4">
-                                                <span className={cn("inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-tighter border", 
-                                                  STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700 border-slate-100')}>
-                                                  {d.status}
-                                                </span>
-                                              </td>
-                                              <td className="px-5 py-4">
-                                                <div className="flex items-center gap-2">
-                                                  <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border shadow-none", 
-                                                    EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
-                                                    {(() => {
-                                                      const Icon = EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.icon || Clock;
-                                                      return <Icon className="w-3 h-3" />;
-                                                    })()}
-                                                    {d.execution_status || 'A iniciar'}
+                                            <React.Fragment key={d.id}>
+                                              <tr className="hover:bg-slate-50/50 transition-colors group">
+                                                <td className="px-5 py-4">
+                                                  <div className="font-semibold text-slate-800 tracking-tight">{d.products?.name || '—'}</div>
+                                                  <div className="text-[10px] text-slate-400 mt-1">{d.notes || 'Sem observações'}</div>
+                                                </td>
+                                                <td className="px-5 py-4">
+                                                  <span className={cn("inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-tighter border", 
+                                                    STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-700 border-slate-100')}>
+                                                    {d.status}
                                                   </span>
-                                                  {d.execution_status === 'Pendenciado' && d.pending_description && (
-                                                    <div className="group/info relative">
-                                                      <Info className="w-4 h-4 text-amber-500 cursor-help transition-transform hover:scale-110" />
-                                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 bg-slate-900 text-white text-[11px] rounded-xl opacity-0 group-hover/info:opacity-100 transition-all pointer-events-none z-[70] shadow-2xl">
-                                                        <p className="font-black mb-1.5 text-amber-400 uppercase tracking-widest text-[9px]">Motivo da Pendência</p>
-                                                        <p className="font-medium text-slate-300 leading-relaxed">{d.pending_description}</p>
-                                                        {d.pending_document_url && (
-                                                          <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
-                                                            <span className="text-white/40">Anexo disponível</span>
-                                                            <a href={d.pending_document_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 pointer-events-auto flex items-center gap-1 font-bold">
-                                                              Ver Doc <ExternalLink className="w-3 h-3" />
-                                                            </a>
-                                                          </div>
-                                                        )}
+                                                </td>
+                                                <td className="px-5 py-4">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border shadow-none", 
+                                                      EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100/50')}>
+                                                      {(() => {
+                                                        const Icon = EXECUTION_STATUS_STYLE[d.execution_status || 'A iniciar']?.icon || Clock;
+                                                        return <Icon className="w-3 h-3" />;
+                                                      })()}
+                                                      {d.execution_status || 'A iniciar'}
+                                                    </span>
+                                                    {d.execution_status === 'Pendenciado' && d.pending_description && (
+                                                      <div className="group/info relative">
+                                                        <Info className="w-4 h-4 text-amber-500 cursor-help transition-transform hover:scale-110" />
+                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 bg-slate-900 text-white text-[11px] rounded-xl opacity-0 group-hover/info:opacity-100 transition-all pointer-events-none z-[70] shadow-2xl">
+                                                          <p className="font-black mb-1.5 text-amber-400 uppercase tracking-widest text-[9px]">Motivo da Pendência</p>
+                                                          <p className="font-medium text-slate-300 leading-relaxed">{d.pending_description}</p>
+                                                          {d.pending_document_url && (
+                                                            <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+                                                              <span className="text-white/40">Anexo disponível</span>
+                                                              <a href={d.pending_document_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 pointer-events-auto flex items-center gap-1 font-bold">
+                                                                Ver Doc <ExternalLink className="w-3 h-3" />
+                                                              </a>
+                                                            </div>
+                                                          )}
+                                                        </div>
                                                       </div>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              </td>
-                                              <td className="px-5 py-4 font-semibold text-slate-600 tabular-nums">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(d.value)}
-                                              </td>
-                                              {isAdmin && <td className="px-5 py-4 text-slate-400 font-medium text-[10px]">{d.payment_method || '—'}</td>}
-                                              <td className="px-5 py-4 text-right">
-                                                 <div className="flex items-center justify-end gap-2">
-                                                  <button onClick={() => copyTrackingLink(client.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white border border-slate-100" title="Link de Acompanhamento">
-                                                    <LinkIcon className="w-4 h-4" />
-                                                  </button>
-                                                  {isAdmin && d.status === 'Fechado' && (
-                                                    <button onClick={() => handleFaturar(d, client.id, client.partner_id)} className="px-3 py-1.5 bg-indigo-600/90 text-white rounded-lg text-[10px] font-semibold hover:bg-indigo-700 transition-all shadow-sm uppercase tracking-tighter">
-                                                      Faturar
+                                                    )}
+                                                  </div>
+                                                </td>
+                                                <td className="px-5 py-4 font-semibold text-slate-600 tabular-nums">
+                                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(d.value)}
+                                                </td>
+                                                {isAdmin && <td className="px-5 py-4 text-slate-400 font-medium text-[10px]">{d.payment_method || '—'}</td>}
+                                                <td className="px-5 py-4 text-right">
+                                                   <div className="flex items-center justify-end gap-2">
+                                                    <button onClick={() => copyTrackingLink(client.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white border border-slate-100" title="Link de Acompanhamento">
+                                                      <LinkIcon className="w-4 h-4" />
                                                     </button>
-                                                  )}
-                                                </div>
-                                              </td>
-                                            </tr>
+                                                    {isAdmin && d.status === 'Fechado' && !dealInstallments[d.id] && (
+                                                      <button onClick={() => handleFaturar(d, client.id, client.partner_id)} className="px-3 py-1.5 bg-indigo-600/90 text-white rounded-lg text-[10px] font-semibold hover:bg-indigo-700 transition-all shadow-sm uppercase tracking-tighter">
+                                                        Faturar
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                              {/* Installments Sub-table */}
+                                              {dealInstallments[d.id] && (
+                                                <tr className="bg-slate-50/30">
+                                                  <td colSpan={isAdmin ? 6 : 5} className="px-10 py-4">
+                                                    <div className="border border-indigo-100/30 rounded-xl overflow-hidden bg-white/50">
+                                                      <div className="px-4 py-2 bg-indigo-50/50 border-b border-indigo-100/30 flex justify-between items-center">
+                                                        <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-widest">Cronograma de Parcelas</span>
+                                                        {loadingInstallments[d.id] && <div className="w-3 h-3 border border-indigo-600 border-t-transparent animate-spin rounded-full" />}
+                                                      </div>
+                                                      <table className="w-full text-[10px]">
+                                                        <thead>
+                                                          <tr className="text-slate-400 border-b border-slate-100">
+                                                            <th className="px-4 py-2 font-semibold">Parcela</th>
+                                                            <th className="px-4 py-2 font-semibold">Valor</th>
+                                                            <th className="px-4 py-2 font-semibold">Status</th>
+                                                            {isAdmin && <th className="px-4 py-2 text-right">Ação</th>}
+                                                          </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                          {dealInstallments[d.id].map((inst) => (
+                                                            <tr key={inst.id} className="hover:bg-white/80 transition-colors">
+                                                              <td className="px-4 py-2 font-medium text-slate-700">{inst.label}</td>
+                                                              <td className="px-4 py-2 font-bold text-slate-900">
+                                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(inst.value)}
+                                                              </td>
+                                                              <td className="px-4 py-2 text-center items-center">
+                                                                <span className={cn("px-2 py-0.5 rounded-full text-[8px] font-bold uppercase", 
+                                                                  inst.status === 'Pago' ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
+                                                                  {inst.status}
+                                                                </span>
+                                                              </td>
+                                                              {isAdmin && (
+                                                                  <div className="flex items-center justify-end gap-2">
+                                                                    {inst.payment_link && inst.status !== 'Pago' && (
+                                                                      <>
+                                                                        <button 
+                                                                          onClick={() => {
+                                                                            navigator.clipboard.writeText(inst.payment_link);
+                                                                            alert('Link copiado!');
+                                                                          }}
+                                                                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
+                                                                          title="Copiar Link"
+                                                                        >
+                                                                          <Copy className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                        <a 
+                                                                          href={inst.payment_link} 
+                                                                          target="_blank" 
+                                                                          rel="noopener noreferrer"
+                                                                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                                          title="Abrir Link InfinitePay"
+                                                                        >
+                                                                          <ExternalLink className="w-3.5 h-3.5" />
+                                                                        </a>
+                                                                      </>
+                                                                    )}
+                                                                    {inst.status !== 'Pago' ? (
+                                                                      <button 
+                                                                        onClick={() => handleFaturarParcela(inst, d, client.id)}
+                                                                        className="px-2 py-1 bg-slate-900 text-white rounded md text-[8px] font-bold hover:bg-black uppercase tracking-tighter"
+                                                                      >
+                                                                        Faturar
+                                                                      </button>
+                                                                    ) : (
+                                                                      <span className="text-emerald-500 font-bold text-[8px] uppercase tracking-widest">Quitado</span>
+                                                                    )}
+                                                                  </div>
+                                                              )}
+                                                            </tr>
+                                                          ))}
+                                                        </tbody>
+                                                      </table>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
                                           ))}
                                         </tbody>
                                       </table>
@@ -1060,10 +1326,20 @@ export function ClientsPage() {
                               </span>
                             </div>
                             
-                            <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-semibold uppercase tracking-tighter border shadow-sm", 
-                              EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100')}>
-                              {deal.execution_status || 'A iniciar'}
-                            </span>
+                            <div className="flex flex-col items-end gap-1.5">
+                              <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-semibold uppercase tracking-tighter border shadow-sm", 
+                                EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-100')}>
+                                {deal.execution_status || 'A iniciar'}
+                              </span>
+                              <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold uppercase border shadow-sm", 
+                                PAYMENT_STATUS_STYLE[deal.payment_status || 'Pendente']?.color || 'bg-slate-50 text-slate-500 border-slate-100')}>
+                                {(() => {
+                                  const Icon = PAYMENT_STATUS_STYLE[deal.payment_status || 'Pendente']?.icon || Clock;
+                                  return <Icon className="w-2.5 h-2.5" />;
+                                })()}
+                                {deal.payment_status || 'Pendente'}
+                              </span>
+                            </div>
                           </div>
                           
                           <div className={cn("pt-2 space-y-2", !isAdmin && deal.status === 'Fechado' && "hidden")}>
@@ -1331,7 +1607,16 @@ export function ClientsPage() {
                                 )}>
                                   {deal.status}
                                 </span>
-                                <span className="text-xs font-semibold text-slate-900 tabular-nums">
+                                <span className={cn("inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[9px] font-bold uppercase border shadow-sm",
+                                  PAYMENT_STATUS_STYLE[deal.payment_status || 'Pendente']?.color || 'bg-slate-50 text-slate-500 border-slate-100'
+                                )}>
+                                  {(() => {
+                                    const Icon = PAYMENT_STATUS_STYLE[deal.payment_status || 'Pendente']?.icon || Clock;
+                                    return <Icon className="w-3 h-3" />;
+                                  })()}
+                                  {deal.payment_status || 'Pendente'}
+                                </span>
+                                <span className="text-xs font-semibold text-slate-900 tabular-nums ml-auto">
                                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parseFloat(deal.value) || 0)}
                                 </span>
                               </div>
@@ -1481,6 +1766,23 @@ export function ClientsPage() {
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
+                      <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Status de Pagamento</label>
+                      <select 
+                        value={tempDeal.payment_status}
+                        onChange={e => setTempDeal({...tempDeal, payment_status: e.target.value as any})}
+                        className={cn("w-full border rounded-xl px-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all cursor-pointer uppercase tracking-tight",
+                          tempDeal.payment_status === 'Pago' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                          tempDeal.payment_status === 'Cancelado' ? "bg-red-50 text-red-700 border-red-200" :
+                          "bg-amber-50 text-amber-700 border-amber-200"
+                        )}
+                      >
+                        <option value="Pendente">🟡 Pendente</option>
+                        <option value="Pago">🟢 Pago</option>
+                        <option value="Cancelado">🔴 Cancelado</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
                       <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Meio de Recebimento</label>
                       <select 
                         value={tempDeal.payment_method}
@@ -1562,6 +1864,65 @@ export function ClientsPage() {
                 className="px-8 py-3 bg-slate-900 text-white font-semibold rounded-xl hover:bg-black shadow-sm transition-all uppercase tracking-[0.1em] text-[11px] active:scale-[0.98]"
               >
                 Confirmar Lançamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Closing Schedule Modal */}
+      {isClosingModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-100">
+            <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <Calendar className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 leading-tight">Agendar Vencimentos</h3>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1">Defina a data do 1º vencimento</p>
+              </div>
+            </div>
+
+            <div className="p-8 space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Data da Primeira Parcela</label>
+                <input 
+                  type="date" 
+                  value={firstDueDate}
+                  onChange={(e) => setFirstDueDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl px-5 py-3.5 text-sm font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-emerald-500/5 focus:bg-white focus:border-emerald-500/30 transition-all shadow-inner"
+                />
+              </div>
+
+              <div className="bg-amber-50 rounded-2xl p-4 flex gap-3 border border-amber-100/50">
+                <Info className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-700 font-medium leading-relaxed">
+                  As demais <strong>12 parcelas</strong> serão geradas automaticamente mês a mês a partir desta data.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 bg-slate-50/80 border-t border-slate-100 flex gap-3">
+              <button 
+                onClick={() => {
+                  setIsClosingModalOpen(false);
+                  setDealToClose(null);
+                }}
+                className="flex-1 py-3.5 text-[11px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  if (dealToClose) {
+                    updateDealStatus(dealToClose.id, dealToClose.newStatus, firstDueDate);
+                    setIsClosingModalOpen(false);
+                    setDealToClose(null);
+                  }
+                }}
+                className="flex-[2] py-3.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition-all uppercase tracking-widest text-[11px] active:scale-[0.98]"
+              >
+                Confirmar e Gerar
               </button>
             </div>
           </div>

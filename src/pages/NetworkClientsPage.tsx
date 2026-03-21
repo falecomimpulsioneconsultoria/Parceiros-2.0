@@ -40,6 +40,8 @@ export function NetworkClientsPage() {
   const [loading, setLoading] = useState(true);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [dealInstallments, setDealInstallments] = useState<Record<string, any[]>>({});
+  const [loadingInstallments, setLoadingInstallments] = useState<Record<string, boolean>>({});
   const { user } = useAuth();
 
   const stages: KanbanStage[] = [
@@ -90,12 +92,41 @@ export function NetworkClientsPage() {
     }
   };
 
-  const toggleExpand = (id: string) =>
+  const loadInstallments = async (dealId: string) => {
+    setLoadingInstallments(prev => ({ ...prev, [dealId]: true }));
+    try {
+      const { data, error } = await (supabase as any)
+        .from('deal_installments')
+        .select('*')
+        .eq('deal_id', dealId)
+        .order('installment_number', { ascending: true });
+
+      if (error) throw error;
+      setDealInstallments(prev => ({ ...prev, [dealId]: data || [] }));
+    } catch (error) {
+      console.error('Erro ao carregar parcelas:', error);
+    } finally {
+      setLoadingInstallments(prev => ({ ...prev, [dealId]: false }));
+    }
+  };
+
+  const toggleExpand = (id: string) => {
     setExpandedRows(prev => {
       const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) {
+        s.delete(id);
+      } else {
+        s.add(id);
+        const client = networkLeads.find(l => l.id === id);
+        client?.lead_deals?.forEach(d => {
+          if (d.status === 'Fechado') {
+            loadInstallments(d.id);
+          }
+        });
+      }
       return s;
     });
+  };
 
   const filteredNetworkLeads = networkLeads.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -140,7 +171,6 @@ export function NetworkClientsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Toggle Lista / Kanban */}
           <div className="flex bg-slate-100 rounded-lg p-1 shadow-sm border border-slate-200">
             <button onClick={() => setViewMode('list')}
               className={cn("px-3 py-1.5 text-xs font-bold rounded-md transition-all",
@@ -154,10 +184,8 @@ export function NetworkClientsPage() {
         </div>
       </div>
 
-      {/* ───── LISTA ───── */}
       {viewMode === 'list' ? (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px]">
-          {/* Search */}
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -242,7 +270,6 @@ export function NetworkClientsPage() {
                           </td>
                         </tr>
 
-                        {/* Expanded deals rows */}
                         {isExpanded && (
                           <tr className="border-b border-slate-100 bg-indigo-50/30">
                             <td colSpan={6} className="px-6 py-3">
@@ -262,57 +289,96 @@ export function NetworkClientsPage() {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100/50">
                                       {deals.map((deal: any) => (
-                                        <tr key={deal.id} className="hover:bg-white/50 transition-colors">
-                                          <td className="px-3 py-2.5 font-bold text-slate-700 flex items-center gap-2">
-                                            <Package className="w-3.5 h-3.5 text-indigo-400" />
-                                            {deal.products?.name || '—'}
-                                          </td>
-                                          <td className="px-3 py-2.5">
-                                            <span className={cn(
-                                              "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
-                                              STATUS_STYLE[deal.status] || 'bg-slate-100 text-slate-700'
-                                            )}>
-                                              {deal.status}
-                                            </span>
-                                          </td>
-                                          <td className="px-3 py-2.5">
-                                            <div className="flex items-center gap-1.5">
+                                        <React.Fragment key={deal.id}>
+                                          <tr className="hover:bg-white/50 transition-colors">
+                                            <td className="px-3 py-2.5 font-bold text-slate-700 flex items-center gap-2">
+                                              <Package className="w-3.5 h-3.5 text-indigo-400" />
+                                              {deal.products?.name || '—'}
+                                            </td>
+                                            <td className="px-3 py-2.5">
                                               <span className={cn(
-                                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border",
-                                                EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-200'
+                                                "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                                                STATUS_STYLE[deal.status] || 'bg-slate-100 text-slate-700'
                                               )}>
-                                                {(() => {
-                                                  const Icon = EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.icon || Clock;
-                                                  return <Icon className="w-3 h-3" />;
-                                                })()}
-                                                {deal.execution_status || 'A iniciar'}
+                                                {deal.status}
                                               </span>
-                                              {deal.execution_status === 'Pendenciado' && deal.pending_description && (
-                                                <div className="group relative">
-                                                  <Info className="w-3.5 h-3.5 text-amber-500 cursor-help" />
-                                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2.5 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 shadow-xl border border-white/10">
-                                                    <p className="font-bold mb-1 text-amber-400 uppercase tracking-tighter">Motivo da Pendência:</p>
-                                                    {deal.pending_description}
-                                                    {deal.pending_document_url && (
-                                                      <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-between">
-                                                        <span className="text-white/40">Anexo disponível</span>
-                                                        <a href={deal.pending_document_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 pointer-events-auto flex items-center gap-1 font-bold">
-                                                          ABRIR <ExternalLink className="w-3 h-3" />
-                                                        </a>
-                                                      </div>
-                                                    )}
-                                                  </div>
+                                            </td>
+                                            <td className="px-3 py-2.5">
+                                              <div className="flex items-center gap-1.5">
+                                                <span className={cn(
+                                                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border",
+                                                  EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-200'
+                                                )}>
+                                                  {(() => {
+                                                    const Icon = EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.icon || Clock;
+                                                    return <Icon className="w-3 h-3" />;
+                                                  })()}
+                                                  {deal.execution_status || 'A iniciar'}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="px-3 py-2.5 text-right font-extrabold text-slate-900">
+                                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deal.value)}
+                                            </td>
+                                            <td className="px-3 py-2.5 text-slate-400 font-medium">
+                                              {new Date(deal.created_at).toLocaleDateString('pt-BR')}
+                                            </td>
+                                          </tr>
+                                          {/* Sub-tabela de Parcelas */}
+                                          {deal.status === 'Fechado' && (
+                                            <tr>
+                                              <td colSpan={5} className="px-8 py-2 bg-indigo-50/50">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                  <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
+                                                  <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Cronograma de Parcelas</span>
                                                 </div>
-                                              )}
-                                            </div>
-                                          </td>
-                                          <td className="px-3 py-2.5 text-right font-extrabold text-slate-900">
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deal.value)}
-                                          </td>
-                                          <td className="px-3 py-2.5 text-slate-400 font-medium">
-                                            {new Date(deal.created_at).toLocaleDateString('pt-BR')}
-                                          </td>
-                                        </tr>
+                                                
+                                                {loadingInstallments[deal.id] ? (
+                                                  <div className="flex items-center gap-2 py-2 text-[10px] text-slate-400 italic">
+                                                    <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                                                    Carregando parcelas...
+                                                  </div>
+                                                ) : !dealInstallments[deal.id] || dealInstallments[deal.id].length === 0 ? (
+                                                  <div className="py-2 text-[10px] text-slate-400 italic">Este negócio não possui parcelas geradas (Venda à Vista).</div>
+                                                ) : (
+                                                  <div className="bg-white/80 rounded-xl border border-indigo-100 overflow-hidden shadow-sm">
+                                                    <table className="w-full text-[10px]">
+                                                      <thead className="bg-indigo-50/50 text-indigo-400 font-bold uppercase tracking-tighter border-b border-indigo-100">
+                                                        <tr>
+                                                          <th className="px-3 py-2 text-left">Parcela</th>
+                                                          <th className="px-3 py-2 text-left">Vencimento</th>
+                                                          <th className="px-3 py-2 text-right">Valor</th>
+                                                          <th className="px-3 py-2 text-center">Status</th>
+                                                        </tr>
+                                                      </thead>
+                                                      <tbody className="divide-y divide-indigo-50/50">
+                                                        {dealInstallments[deal.id].map((inst: any) => (
+                                                          <tr key={inst.id} className="hover:bg-white transition-colors">
+                                                            <td className="px-3 py-2 font-bold text-slate-700">{inst.label}</td>
+                                                            <td className="px-3 py-2 text-slate-500">
+                                                              {inst.due_date ? new Date(inst.due_date).toLocaleDateString('pt-BR') : '—'}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-bold text-slate-900">
+                                                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(inst.value)}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-center">
+                                                              <span className={cn(
+                                                                "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest",
+                                                                inst.status === 'Pago' ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                                              )}>
+                                                                {inst.status === 'Pago' ? 'Quitado' : 'Pendente'}
+                                                              </span>
+                                                            </td>
+                                                          </tr>
+                                                        ))}
+                                                      </tbody>
+                                                    </table>
+                                                  </div>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          )}
+                                        </React.Fragment>
                                       ))}
                                     </tbody>
                                   </table>
@@ -330,9 +396,7 @@ export function NetworkClientsPage() {
           )}
         </div>
       ) : (
-        /* ───── KANBAN (Somente Leitura) ───── */
         <div className="flex flex-col h-full space-y-4">
-          {/* Kanban Toolbar */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-900">
               Kanban de Negócios da Rede <span className="ml-2 text-sm font-normal text-slate-400">({allDeals.length})</span>
@@ -378,7 +442,6 @@ export function NetworkClientsPage() {
                             <span className="line-clamp-1">{deal.products?.name || 'Sem Produto'}</span>
                           </div>
 
-                          {/* Badge de Execução */}
                           <div className="flex items-center gap-1.5">
                             <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border",
                               EXECUTION_STATUS_STYLE[deal.execution_status || 'A iniciar']?.color || 'bg-slate-50 text-slate-500 border-slate-200')}>
@@ -388,9 +451,6 @@ export function NetworkClientsPage() {
                               })()}
                               {deal.execution_status || 'A iniciar'}
                             </span>
-                            {deal.execution_status === 'Pendenciado' && deal.pending_description && (
-                              <Info className="w-3 h-3 text-amber-500" />
-                            )}
                           </div>
 
                           <div className="flex items-center justify-between pt-1">
@@ -399,7 +459,6 @@ export function NetworkClientsPage() {
                             </span>
                           </div>
 
-                          {/* Badge Somente Leitura */}
                           <div className="pt-1">
                             {deal.status === 'Fechado' ? (
                               <div className="flex items-center gap-1.5 px-2 py-1.5 bg-emerald-50 border border-emerald-100 rounded text-[10px] font-bold text-emerald-700 uppercase leading-none">

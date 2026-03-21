@@ -29,7 +29,9 @@ export function AdminSettings() {
   const [financialSettings, setFinancialSettings] = useState({
     min_withdrawal: 100,
     withdrawal_fee: 0,
-    release_days: 30
+    release_days: 30,
+    infinitepay_tag: '',
+    infinitepay_api_key: ''
   });
 
   useEffect(() => {
@@ -52,7 +54,9 @@ export function AdminSettings() {
         setFinancialSettings({
           min_withdrawal: Number(data.min_withdrawal) || 100,
           withdrawal_fee: Number(data.withdrawal_fee) || 0,
-          release_days: Number(data.release_days) || 30
+          release_days: Number(data.release_days) || 30,
+          infinitepay_tag: data.infinitepay_tag || '',
+          infinitepay_api_key: data.infinitepay_api_key || ''
         });
       }
     } catch (error) {
@@ -88,7 +92,9 @@ export function AdminSettings() {
         .update({
           min_withdrawal: financialSettings.min_withdrawal,
           withdrawal_fee: financialSettings.withdrawal_fee,
-          release_days: financialSettings.release_days
+          release_days: financialSettings.release_days,
+          infinitepay_tag: financialSettings.infinitepay_tag,
+          infinitepay_api_key: financialSettings.infinitepay_api_key
         })
         .eq('id', 1);
 
@@ -339,6 +345,26 @@ export function AdminSettings() {
                         className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" 
                       />
                       <p className="text-xs text-slate-500">Dias após a venda para o saldo ficar disponível (Garantia).</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-8 border-t border-slate-100">
+                    <h3 className="text-base font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-indigo-500" />
+                      Integração InfinitePay
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">Infinite Tag (Ex: mercadofree)</label>
+                        <input 
+                          type="text" 
+                          value={financialSettings.infinitepay_tag}
+                          onChange={e => setFinancialSettings({...financialSettings, infinitepay_tag: e.target.value})}
+                          placeholder="Sua tag da InfinitePay"
+                          className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" 
+                        />
+                        <p className="text-xs text-slate-500">Sua InfiniteTag (sem o $) usada para gerar os links de checkout.</p>
+                      </div>
                     </div>
                   </div>
                 </div>

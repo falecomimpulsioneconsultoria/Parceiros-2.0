@@ -24,7 +24,9 @@ export function AdminProducts() {
     commission_lvl2: '',
     link: '',
     status: 'Ativo',
-    cost: ''
+    cost: '',
+    payment_type: 'avista' as 'avista' | 'parcelado',
+    installment_config: null as any
   });
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -68,7 +70,9 @@ export function AdminProducts() {
         commission_lvl2: parseFloat(newProduct.commission_lvl2.replace(',', '.')) || 0,
         link: newProduct.link,
         status: newProduct.status,
-        cost: parseFloat(newProduct.cost.replace(',', '.')) || 0
+        cost: parseFloat(newProduct.cost.replace(',', '.')) || 0,
+        payment_type: newProduct.payment_type,
+        installment_config: newProduct.installment_config
       };
       const { data, error } = await supabase.from('products').insert([productData]).select();
       if (error) throw error;
@@ -85,7 +89,9 @@ export function AdminProducts() {
         commission_lvl2: '', 
         link: '', 
         status: 'Ativo',
-        cost: ''
+        cost: '',
+        payment_type: 'avista',
+        installment_config: null
       });
       setMessage({ type: 'success', text: 'Produto adicionado com sucesso!' });
       setTimeout(() => setMessage(null), 3000);
@@ -118,6 +124,8 @@ export function AdminProducts() {
           link: editProduct.link,
           status: editProduct.status,
           cost: editProduct.cost,
+          payment_type: editProduct.payment_type,
+          installment_config: editProduct.installment_config,
         })
         .eq('id', editProduct.id);
       if (error) throw error;
@@ -359,62 +367,225 @@ export function AdminProducts() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Vendedor)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={newProduct.commission_direct}
-                      onChange={e => setNewProduct({...newProduct, commission_direct: e.target.value})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                    />
-                  </div>
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Indicador)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={newProduct.commission_indicator}
-                      onChange={e => setNewProduct({...newProduct, commission_indicator: e.target.value})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                    />
-                  </div>
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Captador)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={newProduct.commission_captador}
-                      onChange={e => setNewProduct({...newProduct, commission_captador: e.target.value})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                    />
+                  <div className="md:col-span-2 space-y-3">
+                    <label className="text-sm font-bold text-slate-700 uppercase tracking-wider">Tipo de Pagamento</label>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setNewProduct({...newProduct, payment_type: 'avista', installment_config: null})}
+                        className={cn(
+                          "flex-1 py-2 px-4 rounded-xl border-2 transition-all font-bold text-sm",
+                          newProduct.payment_type === 'avista' 
+                            ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm" 
+                            : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
+                        )}
+                      >
+                        À Vista
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const config = Array.from({length: 13}, (_, i) => ({
+                            label: i === 0 ? 'Entrada' : `Parcela ${i}`,
+                            value: 0,
+                            commissions: { direct: 0, indicator: 0, captador: 0, lvl1: 0, lvl2: 0 }
+                          }));
+                          setNewProduct({...newProduct, payment_type: 'parcelado', installment_config: config});
+                        }}
+                        className={cn(
+                          "flex-1 py-2 px-4 rounded-xl border-2 transition-all font-bold text-sm",
+                          newProduct.payment_type === 'parcelado' 
+                            ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm" 
+                            : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
+                        )}
+                      >
+                        Boleto Parcelado
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1 (Vendedor)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={newProduct.commission_lvl1}
-                      onChange={e => setNewProduct({...newProduct, commission_lvl1: e.target.value})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                    />
-                  </div>
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2 (Vendedor)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={newProduct.commission_lvl2}
-                      onChange={e => setNewProduct({...newProduct, commission_lvl2: e.target.value})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
-                    />
-                  </div>
+                  {newProduct.payment_type === 'avista' ? (
+                    <>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Vendedor)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={newProduct.commission_direct}
+                          onChange={e => setNewProduct({...newProduct, commission_direct: e.target.value})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                        />
+                      </div>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Indicador)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={newProduct.commission_indicator}
+                          onChange={e => setNewProduct({...newProduct, commission_indicator: e.target.value})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                        />
+                      </div>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Captador)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={newProduct.commission_captador}
+                          onChange={e => setNewProduct({...newProduct, commission_captador: e.target.value})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                        />
+                      </div>
+
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1 (Vendedor)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={newProduct.commission_lvl1}
+                          onChange={e => setNewProduct({...newProduct, commission_lvl1: e.target.value})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                        />
+                      </div>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2 (Vendedor)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={newProduct.commission_lvl2}
+                          onChange={e => setNewProduct({...newProduct, commission_lvl2: e.target.value})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 overflow-x-auto">
+                        <table className="w-full text-[10px] text-left">
+                          <thead>
+                            <tr className="text-slate-400 font-bold uppercase tracking-wider">
+                              <th className="px-2 py-2">Item</th>
+                              <th className="px-2 py-2 w-20">Valor</th>
+                              <th className="px-2 py-2 w-20">
+                                <div className="flex items-center gap-1">
+                                  Vend.
+                                  <button 
+                                    type="button"
+                                    title="Replicar valores da 1ª linha para todas"
+                                    onClick={() => {
+                                      const first = newProduct.installment_config[0];
+                                      const newConfig = newProduct.installment_config.map((inst: any) => ({
+                                        ...inst,
+                                        commissions: { ...first.commissions }
+                                      }));
+                                      setNewProduct({...newProduct, installment_config: newConfig});
+                                    }}
+                                    className="p-0.5 hover:bg-slate-200 rounded text-indigo-600"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                  </button>
+                                </div>
+                              </th>
+                              <th className="px-2 py-2 w-20">Ind.</th>
+                              <th className="px-2 py-2 w-20">Capt.</th>
+                              <th className="px-2 py-2 w-20">Nível 1</th>
+                              <th className="px-2 py-2 w-20">Nível 2</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {newProduct.installment_config?.map((inst: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="px-2 py-2 font-bold text-slate-600">{inst.label}</td>
+                                <td className="px-2 py-2">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.value}
+                                    onChange={e => {
+                                      const newConfig = [...newProduct.installment_config];
+                                      newConfig[idx].value = parseFloat(e.target.value) || 0;
+                                      setNewProduct({...newProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-emerald-600">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.direct}
+                                    onChange={e => {
+                                      const newConfig = [...newProduct.installment_config];
+                                      newConfig[idx].commissions.direct = parseFloat(e.target.value) || 0;
+                                      setNewProduct({...newProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-amber-600">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.indicator}
+                                    onChange={e => {
+                                      const newConfig = [...newProduct.installment_config];
+                                      newConfig[idx].commissions.indicator = parseFloat(e.target.value) || 0;
+                                      setNewProduct({...newProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-indigo-600">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.captador}
+                                    onChange={e => {
+                                      const newConfig = [...newProduct.installment_config];
+                                      newConfig[idx].commissions.captador = parseFloat(e.target.value) || 0;
+                                      setNewProduct({...newProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-blue-500">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.lvl1}
+                                    onChange={e => {
+                                      const newConfig = [...newProduct.installment_config];
+                                      newConfig[idx].commissions.lvl1 = parseFloat(e.target.value) || 0;
+                                      setNewProduct({...newProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-indigo-400">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.lvl2}
+                                    onChange={e => {
+                                      const newConfig = [...newProduct.installment_config];
+                                      newConfig[idx].commissions.lvl2 = parseFloat(e.target.value) || 0;
+                                      setNewProduct({...newProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-sm font-medium text-slate-700">Link de Checkout</label>
@@ -513,62 +684,227 @@ export function AdminProducts() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Vendedor)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={editProduct.commission_direct || 0}
-                      onChange={e => setEditProduct({...editProduct, commission_direct: parseFloat(e.target.value)})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                    />
-                  </div>
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Indicador)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={editProduct.commission_indicator || 0}
-                      onChange={e => setEditProduct({...editProduct, commission_indicator: parseFloat(e.target.value)})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                    />
-                  </div>
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Captador)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={editProduct.commission_captador || 0}
-                      onChange={e => setEditProduct({...editProduct, commission_captador: parseFloat(e.target.value)})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                    />
+                  <div className="md:col-span-2 space-y-3">
+                    <label className="text-sm font-bold text-slate-700 uppercase tracking-wider">Tipo de Pagamento</label>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setEditProduct({...editProduct, payment_type: 'avista', installment_config: null})}
+                        className={cn(
+                          "flex-1 py-2 px-4 rounded-xl border-2 transition-all font-bold text-sm",
+                          editProduct.payment_type === 'avista' 
+                            ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm" 
+                            : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
+                        )}
+                      >
+                        À Vista
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const config = Array.from({length: 13}, (_, i) => ({
+                            label: i === 0 ? 'Entrada' : `Parcela ${i}`,
+                            value: 0,
+                            commissions: { direct: 0, indicator: 0, captador: 0, lvl1: 0, lvl2: 0 }
+                          }));
+                          setEditProduct({...editProduct, payment_type: 'parcelado', installment_config: config});
+                        }}
+                        className={cn(
+                          "flex-1 py-2 px-4 rounded-xl border-2 transition-all font-bold text-sm",
+                          editProduct.payment_type === 'parcelado' 
+                            ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm" 
+                            : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
+                        )}
+                      >
+                        Boleto Parcelado
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1 (Vendedor)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={editProduct.commission_lvl1 || 0}
-                      onChange={e => setEditProduct({...editProduct, commission_lvl1: parseFloat(e.target.value)})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                    />
-                  </div>
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2 (Vendedor)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      required
-                      value={editProduct.commission_lvl2 || 0}
-                      onChange={e => setEditProduct({...editProduct, commission_lvl2: parseFloat(e.target.value)})}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                    />
-                  </div>
+                  {editProduct.payment_type === 'avista' ? (
+                    <>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Vendedor)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={editProduct.commission_direct || 0}
+                          onChange={e => setEditProduct({...editProduct, commission_direct: parseFloat(e.target.value)})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                        />
+                      </div>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Indicador)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={editProduct.commission_indicator || 0}
+                          onChange={e => setEditProduct({...editProduct, commission_indicator: parseFloat(e.target.value)})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                        />
+                      </div>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Venda Direta (Captador)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={editProduct.commission_captador || 0}
+                          onChange={e => setEditProduct({...editProduct, commission_captador: parseFloat(e.target.value)})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 1 (Vendedor)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={editProduct.commission_lvl1 || 0}
+                          onChange={e => setEditProduct({...editProduct, commission_lvl1: parseFloat(e.target.value)})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                        />
+                      </div>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="text-sm font-medium text-slate-700 text-[11px]">Nível 2 (Vendedor)</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          required
+                          value={editProduct.commission_lvl2 || 0}
+                          onChange={e => setEditProduct({...editProduct, commission_lvl2: parseFloat(e.target.value)})}
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 overflow-x-auto">
+                        <table className="w-full text-[10px] text-left">
+                          <thead>
+                            <tr className="text-slate-400 font-bold uppercase tracking-wider">
+                              <th className="px-2 py-2">Item</th>
+                              <th className="px-2 py-2 w-20">Valor</th>
+                              <th className="px-2 py-2 w-20">
+                                <div className="flex items-center gap-1">
+                                  Vend.
+                                  <button 
+                                    type="button"
+                                    title="Replicar valores da 1ª linha para todas"
+                                    onClick={() => {
+                                      const config = editProduct.installment_config as any[];
+                                      if (!config || config.length === 0) return;
+                                      const first = config[0];
+                                      const newConfig = config.map((inst: any) => ({
+                                        ...inst,
+                                        commissions: { ...first.commissions }
+                                      }));
+                                      setEditProduct({...editProduct, installment_config: newConfig});
+                                    }}
+                                    className="p-0.5 hover:bg-slate-200 rounded text-indigo-600"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                  </button>
+                                </div>
+                              </th>
+                              <th className="px-2 py-2 w-20">Ind.</th>
+                              <th className="px-2 py-2 w-20">Capt.</th>
+                              <th className="px-2 py-2 w-20">Nível 1</th>
+                              <th className="px-2 py-2 w-20">Nível 2</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {(editProduct.installment_config as any[])?.map((inst: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="px-2 py-2 font-bold text-slate-600">{inst.label}</td>
+                                <td className="px-2 py-2">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.value}
+                                    onChange={e => {
+                                      const newConfig = [...(editProduct.installment_config as any[])];
+                                      newConfig[idx].value = parseFloat(e.target.value) || 0;
+                                      setEditProduct({...editProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-emerald-600">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.direct}
+                                    onChange={e => {
+                                      const newConfig = [...(editProduct.installment_config as any[])];
+                                      newConfig[idx].commissions.direct = parseFloat(e.target.value) || 0;
+                                      setEditProduct({...editProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-amber-600">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.indicator}
+                                    onChange={e => {
+                                      const newConfig = [...(editProduct.installment_config as any[])];
+                                      newConfig[idx].commissions.indicator = parseFloat(e.target.value) || 0;
+                                      setEditProduct({...editProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-indigo-600">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.captador}
+                                    onChange={e => {
+                                      const newConfig = [...(editProduct.installment_config as any[])];
+                                      newConfig[idx].commissions.captador = parseFloat(e.target.value) || 0;
+                                      setEditProduct({...editProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-blue-500">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.lvl1}
+                                    onChange={e => {
+                                      const newConfig = [...(editProduct.installment_config as any[])];
+                                      newConfig[idx].commissions.lvl1 = parseFloat(e.target.value) || 0;
+                                      setEditProduct({...editProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-indigo-400">
+                                  <input 
+                                    type="number" 
+                                    step="0.01"
+                                    value={inst.commissions.lvl2}
+                                    onChange={e => {
+                                      const newConfig = [...(editProduct.installment_config as any[])];
+                                      newConfig[idx].commissions.lvl2 = parseFloat(e.target.value) || 0;
+                                      setEditProduct({...editProduct, installment_config: newConfig});
+                                    }}
+                                    className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="md:col-span-2 space-y-1">
                     <label className="text-sm font-medium text-slate-700">Link de Checkout</label>

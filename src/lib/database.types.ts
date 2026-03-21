@@ -105,6 +105,8 @@ export interface Database {
           status: string
           link: string | null
           created_at: string
+          payment_type: 'avista' | 'parcelado' | null
+          installment_config: Json | null
         }
         Insert: {
           id?: string
@@ -122,6 +124,8 @@ export interface Database {
           status?: string
           link?: string | null
           created_at?: string
+          payment_type?: 'avista' | 'parcelado' | null
+          installment_config?: Json | null
         }
         Update: {
           id?: string
@@ -139,6 +143,8 @@ export interface Database {
           status?: string
           link?: string | null
           created_at?: string
+          payment_type?: 'avista' | 'parcelado' | null
+          installment_config?: Json | null
         }
         Relationships: []
       }
@@ -453,6 +459,8 @@ export interface Database {
           min_withdrawal: number
           withdrawal_fee: number
           release_days: number
+          infinitepay_tag: string | null
+          infinitepay_api_key: string | null
           created_at: string
         }
         Insert: {
@@ -462,6 +470,8 @@ export interface Database {
           min_withdrawal?: number
           withdrawal_fee?: number
           release_days?: number
+          infinitepay_tag?: string | null
+          infinitepay_api_key?: string | null
           created_at?: string
         }
         Update: {
@@ -471,9 +481,67 @@ export interface Database {
           min_withdrawal?: number
           withdrawal_fee?: number
           release_days?: number
+          infinitepay_tag?: string | null
+          infinitepay_api_key?: string | null
           created_at?: string
         }
         Relationships: []
+      }
+      deal_installments: {
+        Row: {
+          id: string
+          deal_id: string | null
+          installment_number: number
+          label: string
+          value: number
+          status: string
+          due_date: string | null
+          paid_at: string | null
+          commissions_config: Json | null
+          created_at: string
+          payment_link: string | null
+          external_id: string | null
+          payment_provider: string | null
+        }
+        Insert: {
+          id?: string
+          deal_id?: string | null
+          installment_number: number
+          label: string
+          value: number
+          status?: string
+          due_date?: string | null
+          paid_at?: string | null
+          commissions_config?: Json | null
+          created_at?: string
+          payment_link?: string | null
+          external_id?: string | null
+          payment_provider?: string | null
+        }
+        Update: {
+          id?: string
+          deal_id?: string | null
+          installment_number?: number
+          label?: string
+          value?: number
+          status?: string
+          due_date?: string | null
+          paid_at?: string | null
+          commissions_config?: Json | null
+          created_at?: string
+          payment_link?: string | null
+          external_id?: string | null
+          payment_provider?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_installments_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "lead_deals"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {

@@ -23,34 +23,28 @@ export function AdminDashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Total de parceiros
-      const { data: partners } = await supabase
-        .from('profiles').select('id').eq('role', 'partner');
-
-      // Total de clientes (leads)
-      const { data: leads } = await supabase
-        .from('leads').select('id');
-
-      // Negócios da tabela lead_deals
-      const { data: deals } = await supabase
-        .from('lead_deals')
-        .select(`
+      const [partnersRes, leadsRes, dealsRes, commsRes] = await Promise.all([
+        supabase.from('profiles').select('id').eq('role', 'partner'),
+        supabase.from('leads').select('id'),
+        supabase.from('lead_deals').select(`
           id, status, value, created_at, partner_id, lead_id, product_id, partner_role,
           leads (name),
           profiles:partner_id (full_name),
           products (name, commission_value, commission_direct, commission_lvl1, commission_lvl2, commission_captador, commission_indicator)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        `).order('created_at', { ascending: false }).limit(50),
+        supabase.from('commissions').select('amount, status, type')
+      ]);
 
-      const dealsArr = (deals as any[]) || [];
+      const partners = partnersRes.data;
+      const leads = leadsRes.data;
+      const dealsArr = (dealsRes.data as any[]) || [];
+      const comms = commsRes.data;
+
       const emNegociacao    = dealsArr.filter(d => d.status === 'Em Negociação').length;
       const negociosFechados = dealsArr.filter(d => d.status === 'Fechado').length;
       const volumeVendas    = dealsArr.filter(d => d.status === 'Fechado')
         .reduce((s: number, d: any) => s + Number(d.value), 0);
 
-      // Comissões geradas (Créditos)
-      const { data: comms } = await supabase.from('commissions').select('amount, status, type');
       const comissoesGeradas = ((comms as any[]) || [])
         .filter(c => c.type === 'credit')
         .reduce((s: number, c: any) => s + Number(c.amount), 0);

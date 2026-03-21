@@ -30,6 +30,7 @@ import { AdminSettings } from './pages/admin/AdminSettings';
 import { AdminCommissions } from './pages/admin/AdminCommissions';
 import { AdminBilling } from './pages/admin/AdminBilling';
 import { AdminNetwork } from './pages/admin/AdminNetwork';
+import { AdminInstallments } from './pages/admin/AdminInstallments';
 
 export default function App() {
   return (
@@ -68,6 +69,7 @@ export default function App() {
               <Route path="products" element={<AdminProducts />} />
               <Route path="billing" element={<AdminBilling />} />
               <Route path="commissions" element={<AdminCommissions />} />
+              <Route path="installments" element={<AdminInstallments />} />
               <Route path="withdrawals" element={<AdminWithdrawals />} />
               <Route path="settings" element={<AdminSettings />} />
               <Route path="profile" element={<ProfilePage />} />

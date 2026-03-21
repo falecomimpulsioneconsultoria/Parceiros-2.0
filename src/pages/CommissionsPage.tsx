@@ -9,6 +9,7 @@ type Commission = Database['public']['Tables']['commissions']['Row'] & {
   leads?: { name: string } | null;
   products?: { name: string } | null;
   type?: 'credit' | 'debit';
+  notes?: string;
 };
 
 type Withdrawal = Database['public']['Tables']['withdrawals']['Row'];
@@ -154,7 +155,8 @@ export function CommissionsPage() {
       customer: c.leads?.name || '-',
       amount: c.amount,
       type: c.type || 'credit',
-      status: c.status
+      status: c.status,
+      notes: c.notes
     })),
     ...withdrawals.filter(w => w.status === 'Pendente').map(w => ({
       id: w.id,
@@ -269,7 +271,8 @@ export function CommissionsPage() {
                       {new Date(item.date).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-medium text-slate-900">{item.description}</div>
+                      <div className="font-medium text-slate-900 line-clamp-1">{item.description}</div>
+                      <div className="text-[10px] text-slate-500 italic">{(item as any).notes}</div>
                       {item.customer !== '-' && (
                         <div className="text-xs text-slate-500">Cliente: {item.customer}</div>
                       )}

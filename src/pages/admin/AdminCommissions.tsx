@@ -7,7 +7,9 @@ import type { Database } from '../../lib/database.types';
 type Commission = Database['public']['Tables']['commissions']['Row'] & {
   profiles?: { full_name: string; email: string } | null;
   leads?: { name: string } | null;
-  products?: { name: string } | null;
+  products?: { name: string; price?: number; cost?: number } | null;
+  type: 'credit' | 'debit';
+  notes?: string;
 };
 
 export function AdminCommissions() {
@@ -208,10 +210,11 @@ export function AdminCommissions() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5 font-medium text-slate-900">
+                        <div className="flex items-center gap-1.5 font-medium text-slate-900 line-clamp-1">
                           <Package className="w-3.5 h-3.5 text-slate-400" />
                           {comm.products?.name || 'Venda'}
                         </div>
+                        <div className="text-[10px] text-slate-500 italic">{comm.notes}</div>
                         <div className="text-[10px] text-slate-500">Cliente: {comm.leads?.name || '-'}</div>
                       </div>
                     </td>
