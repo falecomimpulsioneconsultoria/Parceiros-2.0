@@ -102,6 +102,12 @@ export function Layout() {
             {!isCollapsed && <span>Meu Perfil</span>}
           </Link>
 
+          <div className={cn(
+            "px-4 text-[10px] font-medium uppercase tracking-widest opacity-30 mt-auto mb-2",
+            isCollapsed ? "hidden" : (isCaptador ? "text-white" : "text-slate-500")
+          )}>
+            Versão 2.1.0
+          </div>
           <button 
             onClick={signOut}
             className={cn(
