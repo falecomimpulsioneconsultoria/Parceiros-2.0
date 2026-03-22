@@ -79,7 +79,7 @@ export function AdminLayout() {
         </nav>
 
         <div className={cn(
-          "px-4 text-[10px] font-medium uppercase tracking-widest text-slate-500 opacity-30 mt-auto mb-2",
+          "px-4 text-[10px] font-medium uppercase tracking-widest text-slate-500 opacity-60 mt-auto mb-2",
           isCollapsed && "hidden"
         )}>
           Versão 2.1.0

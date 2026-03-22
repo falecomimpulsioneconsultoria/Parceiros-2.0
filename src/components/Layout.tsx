@@ -103,7 +103,7 @@ export function Layout() {
           </Link>
 
           <div className={cn(
-            "px-4 text-[10px] font-medium uppercase tracking-widest opacity-30 mt-auto mb-2",
+            "px-4 text-[10px] font-medium uppercase tracking-widest opacity-60 mt-auto mb-2",
             isCollapsed ? "hidden" : (isCaptador ? "text-white" : "text-slate-500")
           )}>
             Versão 2.1.0
