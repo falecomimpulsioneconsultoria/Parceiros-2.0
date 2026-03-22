@@ -27,7 +27,7 @@ export function AdminLayout() {
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
       <aside className={cn(
-        "bg-slate-900 text-slate-300 flex flex-col fixed h-full z-10 transition-all duration-300 ease-in-out",
+        "bg-slate-900 text-slate-300 flex flex-col fixed h-full z-30 transition-all duration-300 ease-in-out",
         isCollapsed ? "w-20" : "w-64"
       )}>
         <div className={cn(
