@@ -24,7 +24,7 @@ export function AdminLayout() {
   const { signOut } = useAuth();
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen bg-slate-50 flex overflow-hidden">
       {/* Sidebar */}
       <aside className={cn(
         "bg-slate-900 text-slate-300 flex flex-col fixed h-full z-30 transition-all duration-300 ease-in-out",
@@ -101,7 +101,7 @@ export function AdminLayout() {
 
       {/* Main Content */}
       <main className={cn(
-        "flex-1 transition-all duration-300 p-8",
+        "flex-1 transition-all duration-300 p-8 overflow-y-auto overflow-x-hidden",
         isCollapsed ? "ml-20" : "ml-64"
       )}>
         <Outlet />
