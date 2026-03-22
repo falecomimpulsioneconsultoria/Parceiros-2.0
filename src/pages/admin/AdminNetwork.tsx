@@ -180,9 +180,9 @@ export function AdminNetwork() {
 
       {/* Network View */}
       {viewMode === 'tree' ? (
-        <div className="bg-slate-50 border border-slate-200 rounded-3xl overflow-x-auto min-h-[600px] relative p-12 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent shadow-inner">
-          <div className="min-w-max mx-auto flex flex-col items-center">
-            <div className="flex justify-center gap-12 relative">
+        <div className="bg-slate-50 border border-slate-200 rounded-3xl overflow-x-auto min-h-[600px] relative p-4 lg:p-12 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent shadow-inner">
+          <div className="inline-block min-w-full text-center py-8">
+            <div className="flex justify-center gap-16 relative px-32">
               {network.map((p) => (
                 <NetworkTreeNode 
                   key={p.id} 
