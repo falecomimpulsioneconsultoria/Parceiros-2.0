@@ -182,7 +182,7 @@ export function AdminNetwork() {
       {viewMode === 'tree' ? (
         <div className="bg-slate-50 border border-slate-200 rounded-3xl overflow-x-auto min-h-[600px] relative scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent shadow-inner">
           <div className="inline-flex flex-col items-center min-w-full py-12 lg:py-24">
-            <div className="flex justify-center gap-20 relative px-32">
+            <div className="flex justify-center gap-12 relative px-32">
               {network.map((p) => (
                 <NetworkTreeNode 
                   key={p.id} 
@@ -261,10 +261,14 @@ function NetworkTreeNode({
   const hasVisibleChildren = partner.children && partner.children.length > 0;
 
   return (
-    <div className="flex flex-col items-center relative min-w-[160px] animate-in zoom-in-95 duration-300">
-      {/* Connector line up (except for root nodes if they are single, but here we have multiple roots) */}
+    <div className="group flex flex-col items-center relative min-w-[200px] animate-in zoom-in-95 duration-300">
+      {/* Conector Superior (Vertical + Horizontal Bridge) */}
       {depth > 1 && (
-        <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-px h-4 bg-slate-300"></div>
+        <div className="absolute -top-8 left-0 right-0 flex items-start">
+          <div className="flex-1 h-px bg-slate-300 group-first:bg-transparent" />
+          <div className="w-px h-8 bg-slate-300" />
+          <div className="flex-1 h-px bg-slate-300 group-last:bg-transparent" />
+        </div>
       )}
       
       {/* Node */}
@@ -317,12 +321,7 @@ function NetworkTreeNode({
 
       {/* Children Container */}
       {isExpanded && hasVisibleChildren && (
-        <div className="flex justify-center gap-12 relative pt-4">
-          {/* Horizontal connecting line for children */}
-          {partner.children.length > 1 && (
-            <div className="absolute top-0 left-0 right-0 h-px bg-slate-300 mx-auto" style={{ width: `calc(100% - ${100/partner.children.length}%)` }}></div>
-          )}
-          
+        <div className="flex justify-center gap-12 relative pt-8">
           {partner.children.map((child: any) => (
             <NetworkTreeNode 
               key={child.id} 
