@@ -189,6 +189,29 @@ export function AdminPartners() {
     }
   };
 
+  const handleDeletePartner = async (partner: Profile) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o parceiro ${partner.full_name || partner.email}? Esta ação é irreversível e pode falhar se houver dados vinculados.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', partner.id);
+      
+      if (error) throw error;
+      
+      setPartners(partners.filter(p => p.id !== partner.id));
+      setMessage({ type: 'success', text: 'Parceiro excluído com sucesso!' });
+    } catch (error: any) {
+      console.error('Erro ao excluir parceiro:', error);
+      setMessage({ type: 'error', text: 'Não foi possível excluir o parceiro. Verifique se ele possui clientes ou negócios vinculados.' });
+    } finally {
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
   const getStatusStyle = (status: string) => {
     switch (status) {
       case 'Ativo': return 'bg-emerald-100 text-emerald-700';
@@ -332,6 +355,12 @@ export function AdminPartners() {
                               )}
                             >
                               {partner.status === 'Ativo' ? 'Bloquear' : 'Ativar'}
+                            </button>
+                            <button 
+                              onClick={() => handleDeletePartner(partner)}
+                              className="text-xs font-bold text-red-500 hover:bg-red-100 px-3 py-1 rounded-lg transition-all border border-transparent hover:border-red-200 mt-1"
+                            >
+                              Excluir
                             </button>
                           </div>
                         )}
