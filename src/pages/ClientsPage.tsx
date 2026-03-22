@@ -234,11 +234,11 @@ export function ClientsPage() {
       if (selectedClient) {
         const { error } = await supabase.from('leads')
           .update({ 
-            name: formData.name, 
-            email: formData.email, 
-            phone: formData.phone || null,
-            cpf: formData.cpf || null,
-            rg: formData.rg || null,
+            name: formData.name.trim(), 
+            email: formData.email.trim(), 
+            phone: formData.phone.trim() || null,
+            cpf: formData.cpf.trim() || null,
+            rg: formData.rg.trim() || null,
             birth_date: formData.birth_date || null,
             gender: formData.gender || null,
             address_zip_code: formData.address_zip_code || null,
@@ -260,11 +260,11 @@ export function ClientsPage() {
           .insert([{ 
             partner_id: isPartner && !isVendedor && referrerId ? referrerId : (user?.id as string),
             captador_id: isPartner && !isVendedor && referrerId ? user?.id : null,
-            name: formData.name, 
-            email: formData.email, 
-            phone: formData.phone || null,
-            cpf: formData.cpf || null,
-            rg: formData.rg || null,
+            name: formData.name.trim(), 
+            email: formData.email.trim(), 
+            phone: formData.phone.trim() || null,
+            cpf: formData.cpf.trim() || null,
+            rg: formData.rg.trim() || null,
             birth_date: formData.birth_date || null,
             gender: formData.gender || null,
             address_zip_code: formData.address_zip_code || null,
@@ -825,6 +825,10 @@ export function ClientsPage() {
       setLoading(false);
     }
   };
+  
+  // ─── Input Masking ────────────────────────────────────────────────────────
+  const maskCPF = (v: string) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').substring(0, 14);
+  const maskPhone = (v: string) => v.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').substring(0, 15);
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -965,11 +969,11 @@ export function ClientsPage() {
                               {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </button>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-slate-900">{client.name}</div>
+                          <td className="px-4 py-3 max-w-[200px]">
+                            <div className="font-medium text-slate-900 truncate">{client.name}</div>
                           </td>
                           {isAdmin && (
-                            <td className="px-4 py-3 text-xs text-slate-600">
+                            <td className="px-4 py-3 text-xs text-slate-600 max-w-[150px] truncate">
                               {client.profiles?.full_name || client.profiles?.email || '-'}
                             </td>
                           )}
@@ -1087,9 +1091,9 @@ export function ClientsPage() {
                                           {deals.map((d) => (
                                             <React.Fragment key={d.id}>
                                               <tr className="hover:bg-slate-50/50 transition-colors group">
-                                                <td className="px-5 py-4">
-                                                  <div className="font-semibold text-slate-800 tracking-tight">{d.products?.name || '—'}</div>
-                                                  <div className="text-[10px] text-slate-400 mt-1">{d.notes || 'Sem observações'}</div>
+                                                <td className="px-5 py-4 max-w-[300px]">
+                                                  <div className="font-semibold text-slate-800 tracking-tight truncate">{d.products?.name || '—'}</div>
+                                                  <div className="text-[10px] text-slate-400 mt-1 break-all whitespace-pre-wrap leading-relaxed">{d.notes || 'Sem observações'}</div>
                                                 </td>
                                                 <td className="px-5 py-4">
                                                   <span className={cn("inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-tighter border", 
@@ -1131,10 +1135,10 @@ export function ClientsPage() {
                                                 </td>
                                                 {isAdmin && <td className="px-5 py-4 text-slate-400 font-medium text-[10px]">{d.payment_method || '—'}</td>}
                                                 <td className="px-5 py-4 text-right">
-                                                   <div className="flex items-center justify-end gap-2">
-                                                    <button onClick={() => copyTrackingLink(client.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white border border-slate-100" title="Link de Acompanhamento">
-                                                      <LinkIcon className="w-4 h-4" />
-                                                    </button>
+                                                    <div className="flex items-center justify-end gap-3">
+                                                      <button onClick={() => copyTrackingLink(client.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white border border-slate-100" title="Link de Acompanhamento">
+                                                        <LinkIcon className="w-4 h-4" />
+                                                      </button>
                                                     {isAdmin && d.status === 'Fechado' && !dealInstallments[d.id] && (
                                                       <button onClick={() => handleFaturar(d, client.id, client.partner_id)} className="px-3 py-1.5 bg-indigo-600/90 text-white rounded-lg text-[10px] font-semibold hover:bg-indigo-700 transition-all shadow-sm uppercase tracking-tighter">
                                                         Faturar
@@ -1432,7 +1436,11 @@ export function ClientsPage() {
                           <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">{label}</label>
                           <input type={type} required={field !== 'phone'} placeholder={placeholder}
                             value={(formData as any)[field]}
-                            onChange={e => setFormData({ ...formData, [field]: e.target.value })}
+                            onChange={e => {
+                              let val = e.target.value;
+                              if (field === 'phone') val = maskPhone(val);
+                              setFormData({ ...formData, [field]: val });
+                            }}
                             readOnly={isCaptador && isEditModalOpen}
                             className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all placeholder:text-slate-300 read-only:opacity-70 read-only:cursor-default" />
                         </div>
@@ -1450,7 +1458,7 @@ export function ClientsPage() {
                         <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">CPF</label>
                         <input type="text" placeholder="000.000.000-00"
                           value={formData.cpf}
-                          onChange={e => setFormData({ ...formData, cpf: e.target.value })}
+                          onChange={e => setFormData({ ...formData, cpf: maskCPF(e.target.value) })}
                           readOnly={isCaptador && isEditModalOpen}
                           className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all read-only:opacity-70" />
                       </div>

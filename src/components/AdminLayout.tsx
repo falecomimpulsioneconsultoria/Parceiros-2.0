@@ -49,7 +49,7 @@ export function AdminLayout() {
           )}
           <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-800 border border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-500 shadow-lg z-20"
+            className="absolute -right-5 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-800 border border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-500 shadow-xl z-20"
           >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>

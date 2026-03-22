@@ -49,7 +49,7 @@ export function Layout() {
           )}>Parceiros Impulsione</span>}
           <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-white border border-slate-100 rounded-full items-center justify-center text-slate-300 hover:text-indigo-600 hover:border-indigo-100 shadow-sm z-10"
+            className="hidden lg:flex absolute -right-5 top-1/2 -translate-y-1/2 w-10 h-10 bg-white border border-slate-100 rounded-full items-center justify-center text-slate-300 hover:text-indigo-600 hover:border-indigo-100 shadow-md z-10"
           >
             {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Users, DollarSign, TrendingUp, Package, UserPlus, Award, Zap, ChevronRight } from 'lucide-react';
+import { Skeleton } from '@mui/material';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
@@ -160,7 +161,7 @@ export function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-slate-500">{stat.name}</p>
                 <p className="text-2xl font-bold text-slate-900 mt-1">
-                  {loading ? '...' : stat.value}
+                  {loading ? <Skeleton width="60%" /> : stat.value}
                 </p>
               </div>
               <div className={`p-3 rounded-lg ${stat.bg}`}>
@@ -191,7 +192,7 @@ export function Dashboard() {
                 <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded">Seu Plano de Carreira</span>
                 {userLevel === 'Premium' && <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded">Membro Elite</span>}
               </div>
-              <h2 className="text-2xl font-black text-slate-900 uppercase">Nível atual: <span className="text-indigo-600">{userLevel}</span></h2>
+              <h2 className="text-2xl font-black text-slate-900 uppercase">Nível atual: {loading ? <Skeleton width={120} sx={{ display: 'inline-block' }} /> : <span className="text-indigo-600">{userLevel}</span>}</h2>
               <p className="text-slate-500 text-sm font-medium mt-1">
                 {userLevel === 'Afiliado' 
                   ? 'Você está no nível inicial. Aumente seu volume de vendas para se tornar Premium.' 
@@ -212,15 +213,18 @@ export function Dashboard() {
               </div>
               <div className="h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
                 <div 
-                  className="h-full bg-indigo-600 rounded-full shadow-sm transition-all duration-1000 ease-out relative group"
-                  style={{ width: `${userLevel === 'Master' ? 100 : Math.min(100, (stats.valorFechado / (userLevel === 'Afiliado' ? 10000 : 50000)) * 100)}%` }}
+                  className={cn(
+                    "h-full bg-indigo-600 rounded-full shadow-sm transition-all duration-1000 ease-out relative group",
+                    loading && "animate-pulse bg-slate-200"
+                  )}
+                  style={{ width: loading ? '100%' : `${userLevel === 'Master' ? 100 : Math.min(100, (stats.valorFechado / (userLevel === 'Afiliado' ? 10000 : 50000)) * 100)}%` }}
                 >
                   <div className="absolute top-0 right-0 h-full w-8 bg-white/20 skew-x-12 animate-pulse"></div>
                 </div>
               </div>
               <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                <span>{fmt(stats.valorFechado)} acumulados</span>
-                <span>Alvo: {userLevel === 'Afiliado' ? 'R$ 10.000,00' : userLevel === 'Premium' ? 'R$ 50.000,00' : 'Meta Master Batida!'}</span>
+                <span>{loading ? <Skeleton width={60} /> : `${fmt(stats.valorFechado)} acumulados`}</span>
+                <span>Alvo: {loading ? <Skeleton width={80} /> : (userLevel === 'Afiliado' ? 'R$ 10.000,00' : userLevel === 'Premium' ? 'R$ 50.000,00' : 'Meta Master Batida!')}</span>
               </div>
             </div>
           </div>
