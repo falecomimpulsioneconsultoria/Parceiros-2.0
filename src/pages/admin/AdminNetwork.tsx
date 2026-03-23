@@ -265,9 +265,9 @@ function NetworkTreeNode({
       {/* Conector Superior (Vertical + Horizontal Bridge) */}
       {depth > 1 && (
         <div className="absolute -top-8 left-0 right-0 flex items-start">
-          <div className="flex-1 h-px bg-slate-300 group-first:bg-transparent" />
-          <div className="w-px h-8 bg-slate-300" />
-          <div className="flex-1 h-px bg-slate-300 group-last:bg-transparent" />
+          <div className="flex-1 h-0.5 bg-slate-600 group-first:bg-transparent" />
+          <div className="w-0.5 h-8 bg-slate-600" />
+          <div className="flex-1 h-0.5 bg-slate-600 group-last:bg-transparent" />
         </div>
       )}
       
@@ -316,7 +316,7 @@ function NetworkTreeNode({
 
       {/* Vertical Line down to children */}
       {isExpanded && hasVisibleChildren && (
-        <div className="w-px h-8 bg-slate-300"></div>
+        <div className="w-0.5 h-8 bg-slate-600"></div>
       )}
 
       {/* Children Container */}
