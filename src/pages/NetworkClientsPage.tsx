@@ -95,7 +95,7 @@ export function NetworkClientsPage() {
   const loadInstallments = async (dealId: string) => {
     setLoadingInstallments(prev => ({ ...prev, [dealId]: true }));
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('deal_installments')
         .select('*')
         .eq('deal_id', dealId)
@@ -128,10 +128,12 @@ export function NetworkClientsPage() {
     });
   };
 
-  const filteredNetworkLeads = networkLeads.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredNetworkLeads = React.useMemo(() => {
+    return networkLeads.filter(c =>
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [networkLeads, searchTerm]);
 
   const allDeals = React.useMemo(() => {
     return networkLeads.flatMap(lead =>

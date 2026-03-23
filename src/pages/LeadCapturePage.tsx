@@ -10,6 +10,7 @@ type Product = {
   description: string | null;
   price: number;
   link: string;
+  image_url: string | null;
 };
 
 type Message = {
@@ -287,12 +288,16 @@ export function LeadCapturePage() {
           <button className="md:hidden -ml-2 p-2">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
-            <User className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0 overflow-hidden border border-white/10">
+            {product.image_url ? (
+              <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-6 h-6 text-white" />
+            )}
           </div>
-          <div className="flex-1">
-            <h2 className="font-semibold text-base leading-tight">Atendimento</h2>
-            <p className="text-xs text-white/80">Online</p>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-semibold text-base leading-tight truncate">{product.name}</h2>
+            <p className="text-xs text-white/80">Catálogo de Produtos</p>
           </div>
           <button className="p-2">
             <MoreVertical className="w-5 h-5" />

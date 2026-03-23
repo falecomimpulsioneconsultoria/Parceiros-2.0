@@ -107,6 +107,7 @@ export interface Database {
           created_at: string
           payment_type: 'avista' | 'parcelado' | null
           installment_config: Json | null
+          image_url: string | null
         }
         Insert: {
           id?: string
@@ -126,6 +127,7 @@ export interface Database {
           created_at?: string
           payment_type?: 'avista' | 'parcelado' | null
           installment_config?: Json | null
+          image_url?: string | null
         }
         Update: {
           id?: string
@@ -145,6 +147,7 @@ export interface Database {
           created_at?: string
           payment_type?: 'avista' | 'parcelado' | null
           installment_config?: Json | null
+          image_url?: string | null
         }
         Relationships: []
       }
@@ -163,7 +166,9 @@ export interface Database {
           pending_document_url: string | null
           partner_role: string | null
           captador_id: string | null
+          payment_link: string | null
           created_at: string
+          deal_number: number | null
         }
         Insert: {
           id?: string
@@ -179,7 +184,9 @@ export interface Database {
           pending_document_url?: string | null
           partner_role?: string | null
           captador_id?: string | null
+          payment_link?: string | null
           created_at?: string
+          deal_number?: number | null
         }
         Update: {
           id?: string
@@ -195,7 +202,9 @@ export interface Database {
           pending_document_url?: string | null
           partner_role?: string | null
           captador_id?: string | null
+          payment_link?: string | null
           created_at?: string
+          deal_number?: number | null
         }
         Relationships: [
           { foreignKeyName: "lead_deals_lead_id_fkey"; columns: ["lead_id"]; referencedRelation: "leads"; referencedColumns: ["id"] },

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Search, Filter, Mail, Phone, UserPlus, CheckCircle2, X, Package, AlertCircle, CreditCard, Plus, Trash2, ShoppingBag, ChevronDown, ChevronRight, TrendingUp, Clock, PlayCircle, PauseCircle, CheckCircle, XCircle, Info, ExternalLink, DollarSign, Link as LinkIcon, Copy, Edit3, Eye, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Database } from '../lib/database.types';
@@ -13,7 +14,7 @@ type Lead = Database['public']['Tables']['leads']['Row'] & {
 };
 type Product = Database['public']['Tables']['products']['Row'];
 type LeadDeal = Database['public']['Tables']['lead_deals']['Row'] & {
-  products?: { name: string } | null;
+  products?: { name: string, image_url: string | null } | null;
   captador_id?: string | null;
   payment_status?: 'Pendente' | 'Pago' | 'Cancelado' | null;
 };
@@ -90,6 +91,8 @@ export function ClientsPage() {
     return d.toISOString().split('T')[0];
   });
   const [dealToClose, setDealToClose] = useState<{ id: string; newStatus: string } | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
 
   const { user, role, partnerType: authPartnerType, loading: authLoading } = useAuth();
   const isAdmin = role === 'admin';
@@ -150,8 +153,8 @@ export function ClientsPage() {
           *,
           lead_deals (
             id, status, value, payment_method, notes, product_id, created_at,
-            execution_status, pending_description, pending_document_url, payment_status,
-            products (name)
+            execution_status, pending_description, pending_document_url, payment_status, payment_link,
+            products (name, image_url)
           )
         `).order('created_at', { ascending: false }),
         supabase.from('system_settings').select('lead_stages').eq('id', 1).single()
@@ -204,7 +207,7 @@ export function ClientsPage() {
   const loadDealsForClient = async (leadId: string) => {
     const { data } = await supabase
       .from('lead_deals')
-      .select('*, products (name)')
+      .select('*, products (name, image_url)')
       .eq('lead_id', leadId)
       .order('created_at', { ascending: true });
 
@@ -401,12 +404,19 @@ export function ClientsPage() {
     setDealRows(r => r.filter((_, i) => i !== idx));
   };
 
-  const handleDeleteLead = async (id: string) => {
-    if (!window.confirm('Excluir este cliente e todos os seus negócios?')) return;
-    const { error } = await supabase.from('leads').delete().eq('id', id);
+  const handleDeleteLead = (id: string) => {
+    setClientToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteLead = async () => {
+    if (!clientToDelete) return;
+    const { error } = await supabase.from('leads').delete().eq('id', clientToDelete);
     if (error) { setMessage({ type: 'error', text: 'Erro ao excluir.' }); return; }
-    setLeads(l => l.filter(x => x.id !== id));
+    setLeads(l => l.filter(x => x.id !== clientToDelete));
     setIsEditModalOpen(false);
+    setDeleteConfirmOpen(false);
+    setClientToDelete(null);
     setMessage({ type: 'success', text: 'Cliente excluído.' });
     setTimeout(() => setMessage(null), 3000);
   };
@@ -520,10 +530,12 @@ export function ClientsPage() {
     });
   };
 
-  const filteredClients = leads.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredClients = React.useMemo(() => {
+    return leads.filter(c =>
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [leads, searchTerm]);
 
   const allDeals = React.useMemo(() => {
     return leads.flatMap(lead => 
@@ -552,7 +564,7 @@ export function ClientsPage() {
 
       const { data: prodData } = await supabase
         .from('products')
-        .select('payment_type, installment_config, commission_value, commission_direct, commission_captador, commission_indicator')
+        .select('payment_type, installment_config, commission_value, commission_direct, commission_captador, commission_indicator, commission_lvl1, commission_lvl2')
         .eq('id', deal.product_id)
         .single();
 
@@ -577,6 +589,18 @@ export function ClientsPage() {
         const { data: settings } = await supabase.from('system_settings').select('infinitepay_tag').eq('id', 1).single();
         const infiniteTag = settings?.infinitepay_tag;
 
+        // Prepara os dados do cliente para pré-preencher o checkout
+        const formatPhone = (phone: string | null) => {
+          if (!phone) return undefined;
+          const digits = phone.replace(/\D/g, '');
+          return digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
+        };
+        const customer = {
+          name: lead.name || undefined,
+          email: lead.email || undefined,
+          phone_number: formatPhone(lead.phone)
+        };
+
         if (prodData?.payment_type === 'parcelado' && prodData?.installment_config) {
           const startDate = date ? new Date(date) : new Date();
           const installments = [];
@@ -596,7 +620,8 @@ export function ClientsPage() {
                     dealId: deal.id, 
                     installmentIndex: idx, 
                     amount: value,
-                    description: `Parcela ${idx + 1} - ${(prodData as any)?.name || 'Produto'}` 
+                    description: `Parcela ${idx + 1} - ${(prodData as any)?.name || 'Produto'}`,
+                    customer
                   }
                 });
                 if (!linkError && linkData?.url) {
@@ -626,34 +651,26 @@ export function ClientsPage() {
           }
           await (supabase as any).from('deal_installments').insert(installments);
         } else {
-          // Lógica À Vista
-          let commissionAmount = 0;
-          const role = (deal as any).partner_role || 'Vendedor';
+          // Lógica À Vista vira 1 parcela única
+          const startDate = date ? new Date(date) : new Date();
 
-          if (role === 'Vendedor') {
-            commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
-          } else if (role === 'Captador') {
-            commissionAmount = prodData?.commission_captador || 0;
-          } else if (role === 'Indicador') {
-            commissionAmount = prodData?.commission_indicator || 0;
-          }
-
-          // Gerar link para pagamento à vista também
           let payment_link = null;
           if (infiniteTag && deal.value > 0) {
             try {
               const { data: linkData, error: linkError } = await supabase.functions.invoke('generate-infinitepay-link', {
                 body: { 
                   dealId: deal.id, 
+                  installmentIndex: 0, 
                   amount: deal.value,
-                  description: `Pagamento à Vista - ${(prodData as any)?.name || 'Produto'}` 
+                  description: `Pagamento à Vista - ${(prodData as any)?.name || 'Produto'}`,
+                  customer
                 }
               });
               if (!linkError && linkData?.url) {
                 payment_link = linkData.url;
               } else {
                 const formattedValue = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, useGrouping: false }).format(deal.value);
-                payment_link = `https://pay.infinitepay.io/${infiniteTag}/${formattedValue}?metadata=${dealId}`;
+                payment_link = `https://pay.infinitepay.io/${infiniteTag}/${formattedValue}?metadata=${dealId}_0`;
               }
             } catch (e) {
               console.error('Erro link à vista:', e);
@@ -661,38 +678,28 @@ export function ClientsPage() {
           }
           
           if (payment_link) {
-            await supabase.from('lead_deals').update({ notes: (deal.notes ? deal.notes + '\n' : '') + 'Link Pagamento: ' + payment_link }).eq('id', dealId);
+            await supabase.from('lead_deals').update({ payment_link }).eq('id', dealId);
           }
           
-          if (commissionAmount > 0) {
-            const commissionPartnerId = (role === 'Captador' && lead.captador_id) 
-              ? lead.captador_id 
-              : lead.partner_id;
-
-            if (commissionPartnerId) {
-              await supabase.from('commissions').upsert([{
-                partner_id: commissionPartnerId,
-                lead_id: lead.id,
-                deal_id: deal.id,
-                product_id: deal.product_id,
-                amount: commissionAmount,
-                status: 'Pendente',
-                notes: `Comissão contrato à vista (${role})`
-              }], { onConflict: 'deal_id' });
-
-              const { data: profileData } = await supabase
-                .from('profiles')
-                .select('balance')
-                .eq('id', commissionPartnerId)
-                .single();
-              
-              if (profileData) {
-                await supabase.from('profiles')
-                  .update({ balance: (profileData.balance || 0) + commissionAmount })
-                  .eq('id', commissionPartnerId);
-              }
-            }
-          }
+          const singleInstallment = {
+              deal_id: deal.id,
+              installment_number: 0,
+              label: 'À Vista',
+              value: deal.value,
+              status: 'Pendente',
+              due_date: startDate.toISOString(),
+              commissions_config: {
+                 vendedor: prodData?.commission_direct || prodData?.commission_value || 0,
+                 captador: prodData?.commission_captador || 0,
+                 indicador: prodData?.commission_indicator || 0,
+                 lvl1: prodData?.commission_lvl1 || 0,
+                 lvl2: prodData?.commission_lvl2 || 0
+              },
+              payment_link: payment_link,
+              payment_provider: 'infinitepay'
+          };
+          
+          await (supabase as any).from('deal_installments').insert([singleInstallment]);
         }
       }
 
@@ -755,11 +762,11 @@ export function ClientsPage() {
 
       if (commError) throw commError;
       
-      alert('Negócio faturado com sucesso!');
+      setMessage({ type: 'success', text: 'Negócio faturado com sucesso!' });
       await loadData();
     } catch (error: any) {
       console.error('Erro ao faturar:', error);
-      alert('Erro ao faturar: ' + error.message);
+      setMessage({ type: 'error', text: 'Erro ao faturar: ' + error.message });
     } finally {
       setLoading(false);
     }
@@ -777,50 +784,21 @@ export function ClientsPage() {
         .eq('id', installment.id);
       if (updError) throw updError;
 
-      // 2. Gerar comissões configuradas para esta parcela
-      const comms = installment.commissions_config; // { vendedor: val, captador: val, ... }
-      const lead = leads.find(l => l.id === leadId);
-      if (!lead) throw new Error('Cliente não encontrado');
+      // 2. Gerar comissões configuradas para esta parcela via RPC (unificado)
+      const { error: rpcError } = await supabase.rpc('fn_generate_commissions_for_installment', { 
+        p_installment_id: installment.id 
+      });
 
-      const roles = ['vendedor', 'captador', 'indicador', 'nivel1', 'nivel2'];
-      for (const roleKey of roles) {
-        const amount = comms[roleKey] || 0;
-        if (amount > 0) {
-          let partnerId = null;
-          if (roleKey === 'vendedor') partnerId = lead.partner_id;
-          else if (roleKey === 'captador') partnerId = lead.captador_id;
-          else if (roleKey === 'indicador') {
-              // Busca indicador se houver
-              const { data: leadData } = await supabase.from('leads').select('indicator_id').eq('id', leadId).single();
-              partnerId = (leadData as any)?.indicator_id;
-          }
-          // Níveis 1 e 2 viriam da rede do parceiro (simplificado aqui ou via trigger se complexo)
-          // Mas como o user pediu "comportamento igual ao à vista", vamos usar os IDs disponíveis no lead
-
-          if (partnerId) {
-            await supabase.from('commissions').insert([{
-              partner_id: partnerId,
-              lead_id: leadId,
-              deal_id: deal.id,
-              product_id: deal.product_id,
-              amount: amount,
-              status: 'Disponível',
-              type: 'credit',
-              notes: `Parcela ${installment.label} (${roleKey})`
-            }]);
-
-            const { data: prof } = await supabase.from('profiles').select('balance').eq('id', partnerId).single();
-            await supabase.from('profiles').update({ balance: (prof?.balance || 0) + amount }).eq('id', partnerId);
-          }
-        }
+      if (rpcError) {
+        throw new Error('Falha ao gerar comissões via RPC: ' + rpcError.message);
       }
 
-      alert('Parcela faturada e comissões geradas!');
+      setMessage({ type: 'success', text: 'Parcela faturada e comissões geradas!' });
       loadInstallments(deal.id);
       await loadData();
     } catch (error: any) {
       console.error('Erro ao faturar parcela:', error);
-      alert('Erro ao faturar parcela: ' + error.message);
+      setMessage({ type: 'error', text: 'Erro ao faturar parcela: ' + error.message });
     } finally {
       setLoading(false);
     }
@@ -1092,8 +1070,19 @@ export function ClientsPage() {
                                             <React.Fragment key={d.id}>
                                               <tr className="hover:bg-slate-50/50 transition-colors group">
                                                 <td className="px-5 py-4 max-w-[300px]">
-                                                  <div className="font-semibold text-slate-800 tracking-tight truncate">{d.products?.name || '—'}</div>
-                                                  <div className="text-[10px] text-slate-400 mt-1 break-all whitespace-pre-wrap leading-relaxed">{d.notes || 'Sem observações'}</div>
+                                                  <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 bg-slate-50 rounded overflow-hidden flex items-center justify-center shrink-0 border border-slate-100">
+                                                      {d.products?.image_url ? (
+                                                        <img src={d.products.image_url} alt={d.products.name} className="w-full h-full object-cover" />
+                                                      ) : (
+                                                        <Package className="w-4 h-4 text-slate-300" />
+                                                      )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                      <div className="font-semibold text-slate-800 tracking-tight truncate">{d.products?.name || '—'}</div>
+                                                      <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{d.notes || 'Sem observações'}</div>
+                                                    </div>
+                                                  </div>
                                                 </td>
                                                 <td className="px-5 py-4">
                                                   <span className={cn("inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-tighter border", 
@@ -1135,7 +1124,30 @@ export function ClientsPage() {
                                                 </td>
                                                 {isAdmin && <td className="px-5 py-4 text-slate-400 font-medium text-[10px]">{d.payment_method || '—'}</td>}
                                                 <td className="px-5 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-3">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                      {d.payment_link && (
+                                                        <>
+                                                          <button 
+                                                            onClick={() => {
+                                                              navigator.clipboard.writeText(d.payment_link);
+                                                              setMessage({ type: 'success', text: 'Link de pagamento copiado!' });
+                                                            }}
+                                                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                            title="Copiar Link de Pagamento"
+                                                          >
+                                                            <Copy className="w-4 h-4" />
+                                                          </button>
+                                                          <a 
+                                                            href={d.payment_link} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer"
+                                                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                            title="Abrir Checkout"
+                                                          >
+                                                            <ExternalLink className="w-4 h-4" />
+                                                          </a>
+                                                        </>
+                                                      )}
                                                       <button onClick={() => copyTrackingLink(client.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shadow-sm bg-white border border-slate-100" title="Link de Acompanhamento">
                                                         <LinkIcon className="w-4 h-4" />
                                                       </button>
@@ -1154,12 +1166,16 @@ export function ClientsPage() {
                                                     <div className="border border-indigo-100/30 rounded-xl overflow-hidden bg-white/50">
                                                       <div className="px-4 py-2 bg-indigo-50/50 border-b border-indigo-100/30 flex justify-between items-center">
                                                         <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-widest">Cronograma de Parcelas</span>
-                                                        {loadingInstallments[d.id] && <div className="w-3 h-3 border border-indigo-600 border-t-transparent animate-spin rounded-full" />}
+                                                        <div className="flex items-center gap-3">
+                                                          <span className="text-[9px] text-slate-500">Compra: <strong className="text-slate-700">{new Date(d.created_at).toLocaleDateString('pt-BR')}</strong></span>
+                                                          {loadingInstallments[d.id] && <div className="w-3 h-3 border border-indigo-600 border-t-transparent animate-spin rounded-full" />}
+                                                        </div>
                                                       </div>
                                                       <table className="w-full text-[10px]">
                                                         <thead>
                                                           <tr className="text-slate-400 border-b border-slate-100">
                                                             <th className="px-4 py-2 font-semibold">Parcela</th>
+                                                            <th className="px-4 py-2 font-semibold">Vencimento</th>
                                                             <th className="px-4 py-2 font-semibold">Valor</th>
                                                             <th className="px-4 py-2 font-semibold">Status</th>
                                                             {isAdmin && <th className="px-4 py-2 text-right">Ação</th>}
@@ -1169,6 +1185,9 @@ export function ClientsPage() {
                                                           {dealInstallments[d.id].map((inst) => (
                                                             <tr key={inst.id} className="hover:bg-white/80 transition-colors">
                                                               <td className="px-4 py-2 font-medium text-slate-700">{inst.label}</td>
+                                                              <td className="px-4 py-2 text-slate-500">
+                                                                {inst.due_date ? new Date(inst.due_date + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                                                              </td>
                                                               <td className="px-4 py-2 font-bold text-slate-900">
                                                                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(inst.value)}
                                                               </td>
@@ -1179,13 +1198,14 @@ export function ClientsPage() {
                                                                 </span>
                                                               </td>
                                                               {isAdmin && (
+                                                                <td className="px-4 py-2 text-right">
                                                                   <div className="flex items-center justify-end gap-2">
                                                                     {inst.payment_link && inst.status !== 'Pago' && (
                                                                       <>
                                                                         <button 
                                                                           onClick={() => {
                                                                             navigator.clipboard.writeText(inst.payment_link);
-                                                                            alert('Link copiado!');
+                                                                            setMessage({ type: 'success', text: 'Link copiado!' });
                                                                           }}
                                                                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
                                                                           title="Copiar Link"
@@ -1197,7 +1217,7 @@ export function ClientsPage() {
                                                                           target="_blank" 
                                                                           rel="noopener noreferrer"
                                                                           className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                                                                          title="Abrir Link InfinitePay"
+                                                                          title="Abrir Checkout"
                                                                         >
                                                                           <ExternalLink className="w-3.5 h-3.5" />
                                                                         </a>
@@ -1214,6 +1234,7 @@ export function ClientsPage() {
                                                                       <span className="text-emerald-500 font-bold text-[8px] uppercase tracking-widest">Quitado</span>
                                                                     )}
                                                                   </div>
+                                                                </td>
                                                               )}
                                                             </tr>
                                                           ))}
@@ -1316,8 +1337,12 @@ export function ClientsPage() {
 
                         <div className="space-y-3">
                           <div className="flex items-center gap-2 bg-slate-50/50 p-2 rounded-xl border border-slate-100/50">
-                            <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center shadow-sm border border-slate-100">
-                              <Package className="w-4 h-4 text-indigo-500/70" />
+                            <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center shadow-sm border border-slate-100 overflow-hidden shrink-0">
+                              {deal.products?.image_url ? (
+                                <img src={deal.products.image_url} alt={deal.products.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <Package className="w-5 h-5 text-indigo-500/70" />
+                              )}
                             </div>
                             <span className="text-[11px] font-medium text-slate-500 line-clamp-1">{deal.products?.name || 'Sem Produto'}</span>
                           </div>
@@ -1936,6 +1961,15 @@ export function ClientsPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Excluir Cliente"
+        description="Tem certeza que deseja excluir este cliente e todos os seus negócios? Esta ação é irreversível."
+        onConfirm={confirmDeleteLead}
+        confirmText="Excluir"
+        variant="destructive"
+      />
     </div>
   );
 }

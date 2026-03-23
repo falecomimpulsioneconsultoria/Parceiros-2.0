@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Package, Edit, Trash2, X, Link as LinkIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, Plus, Package, Edit, Trash2, X, Link as LinkIcon, AlertCircle, CheckCircle2, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
 
@@ -26,10 +27,16 @@ export function AdminProducts() {
     status: 'Ativo',
     cost: '',
     payment_type: 'avista' as 'avista' | 'parcelado',
-    installment_config: null as any
+    installment_config: null as any,
+    image_url: ''
   });
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const editFileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchProducts();
@@ -49,6 +56,44 @@ export function AdminProducts() {
       setMessage({ type: 'error', text: 'Não foi possível carregar os produtos.' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
+    try {
+      if (!e.target.files || e.target.files.length === 0) return;
+      
+      setUploadingImage(true);
+      const file = e.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `prod-${Date.now()}.${fileExt}`;
+      const filePath = `products/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+      const publicUrl = publicUrlData.publicUrl;
+      
+      if (isEdit && editProduct) {
+        setEditProduct({ ...editProduct, image_url: publicUrl });
+      } else {
+        setNewProduct({ ...newProduct, image_url: publicUrl });
+      }
+      
+      setMessage({ type: 'success', text: 'Imagem carregada com sucesso!' });
+    } catch (error: any) {
+      console.error('Erro no upload da imagem:', error);
+      setMessage({ type: 'error', text: 'Erro ao fazer upload: ' + error.message });
+    } finally {
+      setUploadingImage(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -72,7 +117,8 @@ export function AdminProducts() {
         status: newProduct.status,
         cost: parseFloat(newProduct.cost.replace(',', '.')) || 0,
         payment_type: newProduct.payment_type,
-        installment_config: newProduct.installment_config
+        installment_config: newProduct.installment_config,
+        image_url: newProduct.image_url
       };
       const { data, error } = await supabase.from('products').insert([productData]).select();
       if (error) throw error;
@@ -91,7 +137,8 @@ export function AdminProducts() {
         status: 'Ativo',
         cost: '',
         payment_type: 'avista',
-        installment_config: null
+        installment_config: null,
+        image_url: ''
       });
       setMessage({ type: 'success', text: 'Produto adicionado com sucesso!' });
       setTimeout(() => setMessage(null), 3000);
@@ -126,6 +173,7 @@ export function AdminProducts() {
           cost: editProduct.cost,
           payment_type: editProduct.payment_type,
           installment_config: editProduct.installment_config,
+          image_url: editProduct.image_url
         })
         .eq('id', editProduct.id);
       if (error) throw error;
@@ -142,18 +190,25 @@ export function AdminProducts() {
     }
   };
 
-  const handleDeleteProduct = async (id: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este produto?')) return;
+  const handleDeleteProduct = (id: string) => {
+    setProductToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteProduct = async () => {
+    if (!productToDelete) return;
     
     try {
       const { error } = await supabase
         .from('products')
         .delete()
-        .eq('id', id);
+        .eq('id', productToDelete);
 
       if (error) throw error;
 
-      setProducts(products.filter(p => p.id !== id));
+      setProducts(products.filter(p => p.id !== productToDelete));
+      setDeleteConfirmOpen(false);
+      setProductToDelete(null);
       setMessage({ type: 'success', text: 'Produto excluído com sucesso!' });
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
@@ -236,8 +291,12 @@ export function AdminProducts() {
                   <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                          <Package className="w-5 h-5" />
+                        <div className="w-12 h-12 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200 shrink-0">
+                          {product.image_url ? (
+                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Package className="w-6 h-6 text-slate-400" />
+                          )}
                         </div>
                         <div>
                           <div className="font-medium text-slate-900">{product.name}</div>
@@ -328,6 +387,38 @@ export function AdminProducts() {
                       placeholder="Descreva o produto..."
                       className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all resize-none"
                     ></textarea>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Imagem do Produto</label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-24 h-24 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl overflow-hidden flex items-center justify-center shrink-0">
+                        {newProduct.image_url ? (
+                          <img src={newProduct.image_url} alt="Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="w-8 h-8 text-slate-300" />
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          ref={fileInputRef}
+                          onChange={(e) => handleImageUpload(e, false)}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingImage}
+                          className="inline-flex items-center px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        >
+                          {uploadingImage ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                          {uploadingImage ? 'Enviando...' : 'Selecionar Imagem'}
+                        </button>
+                        <p className="text-[10px] text-slate-500">Recomendado: 500x500px, máx 2MB.</p>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-1">
@@ -649,6 +740,38 @@ export function AdminProducts() {
                     ></textarea>
                   </div>
 
+                  <div className="md:col-span-2 space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Imagem do Produto</label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-24 h-24 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl overflow-hidden flex items-center justify-center shrink-0">
+                        {(editProduct as any).image_url ? (
+                          <img src={(editProduct as any).image_url} alt="Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="w-8 h-8 text-slate-300" />
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          ref={editFileInputRef}
+                          onChange={(e) => handleImageUpload(e, true)}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => editFileInputRef.current?.click()}
+                          disabled={uploadingImage}
+                          className="inline-flex items-center px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        >
+                          {uploadingImage ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                          {uploadingImage ? 'Enviando...' : 'Trocar Imagem'}
+                        </button>
+                        <p className="text-[10px] text-slate-500">Recomendado: 500x500px, máx 2MB.</p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-slate-700">Preço (R$)</label>
                     <input 
@@ -928,6 +1051,15 @@ export function AdminProducts() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Excluir Produto"
+        description="Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita."
+        onConfirm={confirmDeleteProduct}
+        confirmText="Excluir"
+        variant="destructive"
+      />
     </div>
   );
 }

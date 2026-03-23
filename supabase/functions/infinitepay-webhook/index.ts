@@ -36,22 +36,17 @@ serve(async (req) => {
           .select()
         
         if (error) console.error('Erro Parcela:', error)
-        else console.log('Resultado Parcela:', data?.length ? 'SUCESSO' : 'NÃO ENCONTRADA')
-    } else {
-        console.log(`Atualizando Negócio ID: "${dealId}"`)
-        const { data, error } = await supabase
-          .from('lead_deals')
-          .update({ payment_status: 'Pago' })
-          .eq('id', dealId)
-          .select()
-        
-        if (error) {
-            console.error('ERRO AO ATUALIZAR lead_deals:', JSON.stringify(error))
-        } else if (data && data.length > 0) {
-            console.log('SUCESSO: Negócio atualizado no banco.')
-        } else {
-            console.warn(`AVISO: O ID "${dealId}" não foi encontrado em lead_deals. Verifique se ele está completo.`)
+        else {
+            console.log('Resultado Parcela:', data?.length ? 'SUCESSO' : 'NÃO ENCONTRADA')
+            if (data && data.length > 0) {
+               console.log(`Buscando RPC para comissões da parcela: ${data[0].id}`)
+               const { error: rpcError } = await supabase.rpc('fn_generate_commissions_for_installment', { p_installment_id: data[0].id });
+               if (rpcError) console.error('FALHA na geração da comissão (sequencial):', rpcError);
+               else console.log('Comissões geradas com sucesso!');
+            }
         }
+        // A consolidação do status do negócio principal ('Pago' ou 'Em pagamento') 
+        // agora é delegada totalmente para a rotina RPC 'fn_generate_commissions_for_installment'.
     }
 
     return new Response('OK', { status: 200 })

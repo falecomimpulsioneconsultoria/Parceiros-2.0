@@ -4,6 +4,17 @@ import { supabase } from '../../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { cn } from '../../lib/utils';
 import type { Database } from '../../lib/database.types';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 type Profile = Database['public']['Tables']['profiles']['Row'] & { level?: string | null };
 
@@ -12,6 +23,8 @@ export function AdminPartners() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [partnerToDelete, setPartnerToDelete] = useState<Profile | null>(null);
 
   // Modal de Criação
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -64,7 +77,7 @@ export function AdminPartners() {
   const handleCreatePartner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createData.referred_by) {
-      alert('O campo "Indicado por" é obrigatório.');
+      setMessage({ type: 'error', text: 'O campo "Indicado por" é obrigatório.' });
       return;
     }
 
@@ -96,7 +109,7 @@ export function AdminPartners() {
           full_name: createData.full_name,
           phone: createData.phone.trim() !== '' ? createData.phone.trim() : null,
           role: 'partner',
-          referred_by: createData.referred_by,
+          referred_by: createData.referred_by === 'admin-root' ? null : (createData.referred_by || null),
           partner_type: createData.partner_type,
           level: createData.level,
           status: 'Ativo'
@@ -145,7 +158,7 @@ export function AdminPartners() {
         .update({
           full_name: editData.full_name,
           phone: editData.phone.trim() !== '' ? editData.phone.trim() : null,
-          referred_by: editData.referred_by || null,
+          referred_by: editData.referred_by === 'admin-root' ? null : (editData.referred_by || null),
           partner_type: editData.partner_type,
           level: editData.level
         })
@@ -167,7 +180,7 @@ export function AdminPartners() {
     setEditData({
       full_name: partner.full_name || '',
       phone: partner.phone || '',
-      referred_by: partner.referred_by || '',
+      referred_by: partner.referred_by || 'admin-root',
       partner_type: (partner.partner_type as 'vendedor' | 'captador') || 'vendedor',
       level: partner.level || 'Afiliado'
     });
@@ -185,19 +198,24 @@ export function AdminPartners() {
       if (error) throw error;
       setPartners(partners.map(p => p.id === partner.id ? { ...p, status: newStatus } : p));
     } catch (error) {
-      alert('Erro ao alterar status.');
+      setMessage({ type: 'error', text: 'Erro ao alterar status.' });
     }
   };
 
   const handleDeletePartner = async (partner: Profile) => {
-    if (!window.confirm(`Tem certeza que deseja excluir o parceiro ${partner.full_name || partner.email}? Esta ação é irreversível e todos os seus downlines, clientes e comissões serão movidos para o seu patrocinador.`)) {
-      return;
-    }
+    setPartnerToDelete(partner);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeletePartner = async () => {
+    if (!partnerToDelete) return;
+    const partner = partnerToDelete;
 
     setLoading(true);
     try {
       // 1. Identificar o patrocinador herdeiro (quem indicou o parceiro que será excluído)
-      const sponsorId = partner.referred_by;
+      // Se for 'admin-root' ou null, tratamos como null para o banco
+      const sponsorId = (partner.referred_by === 'admin-root' || !partner.referred_by) ? null : partner.referred_by;
 
       // 2. Herança de Rede: Mover downlines (quem este parceiro indicou)
       const { error: profilesError } = await supabase
@@ -713,6 +731,16 @@ export function AdminPartners() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Confirmar Exclusão"
+        description={`Tem certeza que deseja excluir o parceiro ${partnerToDelete?.full_name || partnerToDelete?.email}? Esta ação é irreversível e todos os seus downlines, clientes e comissões serão movidos para o seu patrocinador.`}
+        onConfirm={confirmDeletePartner}
+        confirmText="Excluir"
+        variant="destructive"
+      />
     </div>
   );
 }

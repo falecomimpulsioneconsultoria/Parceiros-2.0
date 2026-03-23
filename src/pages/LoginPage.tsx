@@ -62,8 +62,8 @@ export function LoginPage() {
           password,
         });
         if (error) throw error;
-        // Show success message or auto-login
-        alert('Cadastro realizado com sucesso! Verifique seu e-mail ou faça login.');
+        // Show success message as "error" (temporary until success state is added if needed)
+        setError('Cadastro realizado com sucesso! Verifique seu e-mail ou faça login.');
         setIsLogin(true);
       }
     } catch (err: any) {

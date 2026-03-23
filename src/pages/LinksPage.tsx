@@ -1,10 +1,12 @@
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Share2, Package, QrCode, X, Plus, Link as LinkIcon, CheckCircle2 } from 'lucide-react';
+import { Copy, Share2, Package, QrCode, X, Plus, Link as LinkIcon, CheckCircle2, Download, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
 import type { Database } from '../lib/database.types';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { AlertCircle } from 'lucide-react';
 
 type Product = Database['public']['Tables']['products']['Row'];
 
@@ -23,6 +25,11 @@ export function LinksPage() {
   const [activeTab, setActiveTab] = useState<'my_products' | 'explore'>('my_products');
   const [isAffiliating, setIsAffiliating] = useState<string | null>(null);
   const [partnerType, setPartnerType] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [qrToDelete, setQrToDelete] = useState<{ id: string, affiliationId: string } | null>(null);
+  const [deaffiliateConfirmOpen, setDeaffiliateConfirmOpen] = useState(false);
+  const [productToDeaffiliate, setProductToDeaffiliate] = useState<Product | null>(null);
   
   const { user, role, partnerType: authPartnerType } = useAuth();
   const isCaptador = role === 'partner' && (authPartnerType?.toLowerCase() === 'captador' || partnerType?.toLowerCase() === 'captador');
@@ -105,23 +112,37 @@ export function LinksPage() {
     if (!partnerId) return;
     setIsAffiliating(productId);
     try {
-      const { error } = await supabase
+      const { data: affiliation, error } = await supabase
         .from('partner_products')
-        .insert({ partner_id: partnerId, product_id: productId });
+        .insert({ partner_id: partnerId, product_id: productId })
+        .select()
+        .single();
       
       if (error && error.code !== '23505') throw error;
       
-      // Sincroniza dados para obter o ID da nova afiliação
+      if (!error && affiliation) {
+        // Criar QR Code padrão automaticamente
+        await supabase
+          .from('product_qrcodes')
+          .insert({
+            partner_product_id: affiliation.id,
+            name: 'Link Padrão',
+            redirect_phone: null
+          });
+      }
+      
+      // Sincroniza dados
       await fetchData();
       
       if (!error) {
-        alert('Afiliado com sucesso! O produto agora está em Meus Produtos.');
+        setMessage({ type: 'success', text: 'Afiliado com sucesso! O QR Code padrão foi gerado automaticamente.' });
       }
     } catch (error: any) {
       console.error('Erro ao se afiliar:', error);
-      alert('Erro ao se afiliar: ' + (error.message || ''));
+      setMessage({ type: 'error', text: 'Erro ao se afiliar: ' + (error.message || '') });
     } finally {
       setIsAffiliating(null);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
   
@@ -148,7 +169,7 @@ export function LinksPage() {
     const affiliation = myAffiliations[selectedProduct.id];
     if (!affiliation || !affiliation.id) {
       console.error('Dados de afiliação não encontrados:', affiliation);
-      alert('Erro de sincronia: ID da afiliação não encontrado. Por favor, atualize a página e tente novamente.');
+      setMessage({ type: 'error', text: 'Erro de sincronia: ID da afiliação não encontrado.' });
       return;
     }
 
@@ -171,39 +192,124 @@ export function LinksPage() {
       });
       setQrName('');
       setRedirectPhone(profilePhone || '');
-      alert('QR Code personalizado criado com sucesso!');
-    } catch (err) {
+      setMessage({ type: 'success', text: 'QR Code personalizado criado com sucesso!' });
+    } catch (err: any) {
       console.error('Erro ao adicionar QR Code:', err);
-      alert('Erro ao criar QR Code.');
+      setMessage({ type: 'error', text: 'Erro ao criar QR Code.' });
+    } finally {
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
-  const handleDeleteQRCode = async (id: string, affiliationId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este QR Code?')) return;
+  const handleDeleteQRCode = (id: string, affiliationId: string) => {
+    setQrToDelete({ id, affiliationId });
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDownloadQR = (qrName: string, elementId: string) => {
+    const svg = document.getElementById(elementId);
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = () => {
+      // Definir tamanho fixo de 600x600 para alta qualidade de impressão
+      const size = 600;
+      const padding = 40;
+      canvas.width = size;
+      canvas.height = size;
+      
+      if (ctx) {
+        // Fundo branco
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Desenhar QR Code centralizado e escalonado
+        const qrSize = size - (padding * 2);
+        ctx.drawImage(img, padding, padding, qrSize, qrSize);
+        
+        const pngFile = canvas.toDataURL('image/png');
+        const downloadLink = document.createElement('a');
+        downloadLink.download = `QRCode-${qrName}.png`;
+        downloadLink.href = pngFile;
+        downloadLink.click();
+      }
+    };
+    
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  };
+
+  const confirmDeleteQRCode = async () => {
+    if (!qrToDelete) return;
     try {
       const { error } = await supabase
         .from('product_qrcodes')
         .delete()
-        .eq('id', id);
+        .eq('id', qrToDelete.id);
       
       if (error) throw error;
       
       setProductQRCodes(prev => ({
         ...prev,
-        [affiliationId]: (prev[affiliationId] || []).filter(qr => qr.id !== id)
+        [qrToDelete.affiliationId]: (prev[qrToDelete.affiliationId] || []).filter(qr => qr.id !== qrToDelete.id)
       }));
+      setDeleteConfirmOpen(false);
+      setQrToDelete(null);
+      setMessage({ type: 'success', text: 'QR Code excluído com sucesso.' });
     } catch (err) {
       console.error('Erro ao deletar QR Code:', err);
-      alert('Erro ao deletar QR Code.');
+      setMessage({ type: 'error', text: 'Erro ao deletar QR Code.' });
+    } finally {
+      setTimeout(() => setMessage(null), 3000);
+    }
+  };
+
+  const handleDeaffiliate = (product: Product) => {
+    setProductToDeaffiliate(product);
+    setDeaffiliateConfirmOpen(true);
+  };
+
+  const confirmDeaffiliate = async () => {
+    if (!productToDeaffiliate || !partnerId) return;
+    try {
+      const { error } = await supabase
+        .from('partner_products')
+        .delete()
+        .eq('partner_id', partnerId)
+        .eq('product_id', productToDeaffiliate.id);
+      
+      if (error) throw error;
+      
+      await fetchData();
+      setDeaffiliateConfirmOpen(false);
+      setProductToDeaffiliate(null);
+      setMessage({ type: 'success', text: 'Produto removido dos seus produtos com sucesso.' });
+    } catch (err: any) {
+      console.error('Erro ao dessacociar produto:', err);
+      setMessage({ type: 'error', text: 'Erro ao remover produto: ' + (err.message || '') });
+    } finally {
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-12">
       <div className="mb-2">
-        <h1 className="text-2xl font-bold text-slate-900">Meus Links e QR Codes</h1>
         <p className="text-slate-500 mt-1">Compartilhe seus links para indicar novos parceiros ou clientes.</p>
       </div>
+      
+      {message && (
+        <div className={cn(
+          "mb-6 p-4 rounded-xl flex items-center gap-3 animate-in slide-in-from-top-2 duration-300",
+          message.type === 'success' ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-red-50 text-red-700 border border-red-100"
+        )}>
+          {message.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+          <p className="text-sm font-medium">{message.text}</p>
+        </div>
+      )}
 
       <div className="space-y-10">
         {/* Links de Indicação de Parceiros */}
@@ -218,7 +324,7 @@ export function LinksPage() {
               {/* Card Vendedor */}
               <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 flex flex-col sm:flex-row items-center gap-6 group hover:border-indigo-200 transition-all">
                 <div className="p-3 bg-indigo-50/50 rounded-xl shrink-0 group-hover:bg-indigo-50 transition-colors">
-                  <QRCodeSVG value={vendedorLink} size={100} level="H" includeMargin={false} />
+                  <QRCodeSVG value={vendedorLink} size={100} level="M" includeMargin={false} />
                 </div>
                 <div className="flex-1 space-y-3 w-full text-center sm:text-left">
                   <div>
@@ -245,7 +351,7 @@ export function LinksPage() {
               {/* Card Captador */}
               <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 flex flex-col sm:flex-row items-center gap-6 group hover:border-emerald-200 transition-all">
                 <div className="p-3 bg-emerald-50/50 rounded-xl shrink-0 group-hover:bg-emerald-50 transition-colors">
-                  <QRCodeSVG value={captadorLink} size={100} level="H" includeMargin={false} />
+                  <QRCodeSVG value={captadorLink} size={100} level="M" includeMargin={false} />
                 </div>
                 <div className="flex-1 space-y-3 w-full text-center sm:text-left">
                   <div>
@@ -335,8 +441,12 @@ export function LinksPage() {
                         <div key={product.id} className="group p-4 bg-white border border-slate-100 rounded-xl hover:border-indigo-100 hover:bg-slate-50/30 transition-all">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-indigo-50/50 rounded-lg flex items-center justify-center text-indigo-600 shrink-0">
-                                <Package className="w-5 h-5" />
+                              <div className="w-12 h-12 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200 shrink-0 shadow-sm">
+                                {product.image_url ? (
+                                  <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <Package className="w-6 h-6 text-slate-400" />
+                                )}
                               </div>
                               <div>
                                 <h3 className="font-semibold text-slate-900">{product.name}</h3>
@@ -374,33 +484,42 @@ export function LinksPage() {
                               >
                                 <QrCode className="w-4 h-4" />
                               </button>
+                              <button 
+                                onClick={() => handleDeaffiliate(product)}
+                                className="inline-flex items-center justify-center p-2 bg-white border border-slate-200 text-red-500 rounded-lg hover:bg-red-50 hover:border-red-100 transition-all shadow-sm"
+                                title="Dessacociar Produto"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
 
-                          {/* Lista Horizontal de QR Codes Extras */}
-                          {qrcodes.length > 0 && (
+                          {/* Lista Horizontal de QR Codes Extras (Exceto o Padrão) */}
+                          {qrcodes.filter(qr => qr.name !== 'Link Padrão').length > 0 && (
                             <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
-                              {qrcodes.map((qr) => {
-                                const baseUrl = `${window.location.origin}/capture/${product.id}?ref=${partnerId}`;
-                                let finalUrl = qr.redirect_phone ? `${baseUrl}&wa=${qr.redirect_phone}` : baseUrl;
-                                if (isCaptador && profileReferredBy) {
-                                  finalUrl += `&v=${profileReferredBy}`;
-                                }
-                                return (
-                                  <button
-                                    key={qr.id}
-                                    onClick={() => handleCopy(finalUrl, qr.id)}
-                                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200/60 rounded-lg hover:border-indigo-200 hover:bg-white transition-all text-[11px] text-slate-600 group"
-                                  >
-                                    <span className="max-w-[120px] truncate font-medium">{qr.name}</span>
-                                    {copied === qr.id ? (
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                    ) : (
-                                      <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500" />
-                                    )}
-                                  </button>
-                                );
-                              })}
+                              {qrcodes
+                                .filter(qr => qr.name !== 'Link Padrão')
+                                .map((qr) => {
+                                  const baseUrl = `${window.location.origin}/capture/${product.id}?ref=${partnerId}`;
+                                  let finalUrl = qr.redirect_phone ? `${baseUrl}&wa=${qr.redirect_phone}` : baseUrl;
+                                  if (isCaptador && profileReferredBy) {
+                                    finalUrl += `&v=${profileReferredBy}`;
+                                  }
+                                  return (
+                                    <button
+                                      key={qr.id}
+                                      onClick={() => handleCopy(finalUrl, qr.id)}
+                                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200/60 rounded-lg hover:border-indigo-200 hover:bg-white transition-all text-[11px] text-slate-600 group"
+                                    >
+                                      <span className="max-w-[120px] truncate font-medium">{qr.name}</span>
+                                      {copied === qr.id ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                      ) : (
+                                        <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
                             </div>
                           )}
                         </div>
@@ -413,8 +532,12 @@ export function LinksPage() {
                   .map((product) => (
                     <div key={product.id} className="p-4 bg-white border border-slate-100 rounded-xl hover:border-indigo-100 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center text-slate-400 shrink-0">
-                          <Package className="w-5 h-5" />
+                        <div className="w-12 h-12 bg-slate-50 rounded-lg overflow-hidden flex items-center justify-center border border-slate-200 shrink-0 shadow-sm">
+                          {product.image_url ? (
+                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Package className="w-6 h-6 text-slate-400" />
+                          )}
                         </div>
                         <div>
                           <h3 className="font-semibold text-slate-900">{product.name}</h3>
@@ -541,22 +664,32 @@ export function LinksPage() {
                             </div>
 
                             <div className="relative group/qr flex justify-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 group-hover:bg-white group-hover:border-indigo-100 transition-all duration-300">
-                              <QRCodeSVG value={finalUrl} size={160} level="H" includeMargin={false} />
+                              <QRCodeSVG id={`qr-${qr.id}`} value={finalUrl} size={160} level="M" includeMargin={false} />
                               <div className="absolute inset-0 bg-white/0 group-hover/qr:bg-white/5 transition-all duration-300 pointer-events-none rounded-2xl" />
                             </div>
 
-                            <button 
-                              onClick={() => handleCopy(finalUrl, qr.id)}
-                              className={cn(
-                                "w-full flex items-center justify-center gap-3 px-6 py-4 rounded-[1.25rem] text-sm font-bold tracking-tight transition-all active:scale-[0.98]",
-                                copied === qr.id 
-                                  ? "bg-emerald-50 text-emerald-600 border border-emerald-200" 
-                                  : "bg-indigo-600 text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-500/20"
-                              )}
-                            >
-                              {copied === qr.id ? <CheckCircle2 className="w-5 h-5 animate-in zoom-in" /> : <Copy className="w-5 h-5" />}
-                              {copied === qr.id ? "Link Copiado!" : "Copiar Link Exclusivo"}
-                            </button>
+                            <div className="flex gap-3">
+                              <button 
+                                onClick={() => handleCopy(finalUrl, qr.id)}
+                                className={cn(
+                                  "flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-[1.25rem] text-sm font-bold tracking-tight transition-all active:scale-[0.98]",
+                                  copied === qr.id 
+                                    ? "bg-emerald-50 text-emerald-600 border border-emerald-200" 
+                                    : "bg-indigo-600 text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-500/20"
+                                )}
+                              >
+                                {copied === qr.id ? <CheckCircle2 className="w-5 h-5 animate-in zoom-in" /> : <Copy className="w-5 h-5" />}
+                                {copied === qr.id ? "Copiado!" : "Copiar Link"}
+                              </button>
+                              
+                              <button 
+                                onClick={() => handleDownloadQR(qr.name, `qr-${qr.id}`)}
+                                className="flex items-center justify-center p-4 bg-white border border-slate-200 text-slate-500 rounded-[1.25rem] hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
+                                title="Baixar QR Code"
+                              >
+                                <Download className="w-5 h-5" />
+                              </button>
+                            </div>
                           </div>
                           
                           {/* Info Footer */}
@@ -634,6 +767,22 @@ export function LinksPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        onConfirm={confirmDeleteQRCode}
+        title="Excluir QR Code"
+        description="Tem certeza que deseja excluir este QR Code? Esta ação não pode ser desfeita."
+      />
+
+      <ConfirmDialog
+        open={deaffiliateConfirmOpen}
+        onOpenChange={setDeaffiliateConfirmOpen}
+        onConfirm={confirmDeaffiliate}
+        title="Encerrar Afiliação"
+        description={`Tem certeza que deseja dessacociar o produto "${productToDeaffiliate?.name}"? Seus QR Codes personalizados para este produto também serão excluídos.`}
+      />
     </div>
   );
 }

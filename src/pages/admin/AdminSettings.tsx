@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, Percent, Award, Wallet, Settings as SettingsIcon, ShieldCheck, Image as ImageIcon, Upload, X, LayoutDashboard, Plus, Trash2, GripVertical } from 'lucide-react';
+import { Save, Percent, Award, Wallet, Settings as SettingsIcon, ShieldCheck, Image as ImageIcon, Upload, X, LayoutDashboard, Plus, Trash2, GripVertical, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { supabase } from '../../lib/supabase';
 
@@ -25,6 +25,7 @@ export function AdminSettings() {
   ]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const [financialSettings, setFinancialSettings] = useState({
     min_withdrawal: 100,
@@ -75,12 +76,13 @@ export function AdminSettings() {
         .eq('id', 1);
 
       if (error) throw error;
-      alert('Etapas do funil salvas com sucesso!');
+      setMessage({ type: 'success', text: 'Etapas do funil salvas com sucesso!' });
     } catch (error: any) {
       console.error('Erro ao salvar etapas:', error);
-      alert('Erro ao salvar etapas: ' + error.message);
+      setMessage({ type: 'error', text: 'Erro ao salvar etapas: ' + error.message });
     } finally {
       setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -99,12 +101,13 @@ export function AdminSettings() {
         .eq('id', 1);
 
       if (error) throw error;
-      alert('Configurações financeiras salvas com sucesso!');
+      setMessage({ type: 'success', text: 'Configurações financeiras salvas com sucesso!' });
     } catch (error: any) {
       console.error('Erro ao salvar config financeiras:', error);
-      alert('Erro ao salvar: ' + error.message);
+      setMessage({ type: 'error', text: 'Erro ao salvar: ' + error.message });
     } finally {
       setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -115,7 +118,7 @@ export function AdminSettings() {
 
   const removeStage = (id: string) => {
     if (stages.length <= 1) {
-      alert("Você precisa ter pelo menos 1 etapa no funil.");
+      setMessage({ type: 'error', text: 'Você precisa ter pelo menos 1 etapa no funil.' });
       return;
     }
     setStages(stages.filter(s => s.id !== id));
@@ -174,12 +177,13 @@ export function AdminSettings() {
 
       if (updateError) throw updateError;
       
-      alert('Imagem atualizada com sucesso!');
+      setMessage({ type: 'success', text: 'Imagem atualizada com sucesso!' });
     } catch (error: any) {
       console.error('Erro no upload da imagem:', error);
-      alert('Erro ao fazer upload da imagem: ' + error.message);
+      setMessage({ type: 'error', text: 'Erro ao fazer upload da imagem: ' + error.message });
     } finally {
       setUploadingImage(false);
+      setTimeout(() => setMessage(null), 3000);
       // reset file input
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -195,11 +199,13 @@ export function AdminSettings() {
 
       if (error) throw error;
       setLoginImageUrl('');
-      alert('Imagem removida com sucesso!');
+      setMessage({ type: 'success', text: 'Imagem removida com sucesso!' });
     } catch (error) {
       console.error('Erro ao remover imagem:', error);
+      setMessage({ type: 'error', text: 'Erro ao remover imagem.' });
     } finally {
       setUploadingImage(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -210,11 +216,24 @@ export function AdminSettings() {
           <h1 className="text-2xl font-bold text-slate-900">Configurações do Sistema</h1>
           <p className="text-slate-500 mt-1">Defina as regras de negócio, comissionamento e parâmetros globais.</p>
         </div>
+        
+        {message && (
+          <div className={cn(
+            "fixed top-6 right-6 z-[100] p-4 rounded-xl flex items-center gap-3 animate-in slide-in-from-right-4 duration-300 shadow-xl",
+            message.type === 'success' ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-red-50 text-red-700 border border-red-100"
+          )}>
+            {message.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+            <p className="text-sm font-medium">{message.text}</p>
+          </div>
+        )}
         <button 
           onClick={() => {
             if (activeTab === 'kanban') handleSaveKanbanStages();
             if (activeTab === 'financial') handleSaveFinancial();
-            if (activeTab === 'commissions') alert('Configurações de níveis salvas (simulação)');
+            if (activeTab === 'commissions') {
+              setMessage({ type: 'success', text: 'Configurações de níveis salvas (simulação)' });
+              setTimeout(() => setMessage(null), 3000);
+            }
           }}
           disabled={loading}
           className="inline-flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"

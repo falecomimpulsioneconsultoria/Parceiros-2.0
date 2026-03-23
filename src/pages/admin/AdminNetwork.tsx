@@ -302,8 +302,8 @@ function NetworkTreeNode({
       </div>
 
       {/* Label */}
-      <div className="mt-4 flex flex-col items-center max-w-[140px]">
-        <span className="text-[11px] font-bold text-slate-800 text-center line-clamp-1">{partner.full_name || 'Sem Nome'}</span>
+      <div className="mt-4 flex flex-col items-center max-w-[120px]">
+        <span className="text-[11px] font-bold text-slate-800 text-center leading-tight">{partner.full_name || 'Sem Nome'}</span>
         <span className={cn(
           "text-[8px] font-extrabold uppercase tracking-tighter px-2 py-0.5 rounded-full mt-1 border shadow-sm",
           partner.partner_type === 'captador' 

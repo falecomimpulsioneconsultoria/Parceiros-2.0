@@ -101,7 +101,7 @@ export function AdminInstallments() {
   const handleFaturar = async (inst: Installment) => {
     try {
       setLoading(true);
-      // 1. Marcar como pago - O Gatilho SQL (tr_installment_paid) cuidará da geração de comissões automaticamente
+      // 1. Marcar como pago
       const { error: updError } = await (supabase as any)
         .from('deal_installments')
         .update({ 
@@ -112,8 +112,17 @@ export function AdminInstallments() {
 
       if (updError) throw updError;
 
-      setMessage({ type: 'success', text: 'Parcela faturada com sucesso!' });
-      setTimeout(() => setMessage(null), 3000);
+      // 2. Distribuir comissões sequencialmente (separado do trigger)
+      const { error: rpcError } = await (supabase as any).rpc('fn_generate_commissions_for_installment', { p_installment_id: inst.id });
+      
+      if (rpcError) {
+        console.error('Erro ao gerar comissões:', rpcError);
+        setMessage({ type: 'error', text: 'Status atualizado, mas houve falha ao distribuir comissões.' });
+      } else {
+        setMessage({ type: 'success', text: 'Parcela faturada e comissões distribuídas!' });
+      }
+      
+      setTimeout(() => setMessage(null), 4000);
       loadInstallments();
     } catch (error: any) {
       console.error('Erro no faturamento:', error);
@@ -445,55 +454,59 @@ export function AdminInstallments() {
                                               </span>
                                             </td>
                                             <td className="px-5 py-3 text-right">
-                                              {inst.status !== 'Pago' ? (
-                                                  <div className="flex items-center justify-end gap-1">
-                                                    {inst.payment_link && (
-                                                      <>
-                                                        <button 
-                                                          onClick={() => {
-                                                            navigator.clipboard.writeText(inst.payment_link!);
-                                                            alert('Link copiado!');
-                                                          }}
-                                                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
-                                                          title="Copiar Link"
-                                                        >
-                                                          <Copy className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <a 
-                                                          href={inst.payment_link} 
-                                                          target="_blank" 
-                                                          rel="noopener noreferrer"
-                                                          className="p-1.5 text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"
-                                                          title="Abrir Checkout InfinitePay"
-                                                        >
-                                                          <ExternalLink className="w-3.5 h-3.5" />
-                                                        </a>
-                                                      </>
-                                                    )}
+                                              <div className="flex items-center justify-end gap-1.5">
+                                                {inst.payment_link && (
+                                                  <>
                                                     <button 
                                                       onClick={() => {
-                                                        setEditingInstallment(inst);
-                                                        setIsEditModalOpen(true);
+                                                        navigator.clipboard.writeText(inst.payment_link!);
+                                                        setMessage({ type: 'success', text: 'Link copiado!' });
+                                                        setTimeout(() => setMessage(null), 2000);
                                                       }}
-                                                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                                                      title="Editar Data"
+                                                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
+                                                      title="Copiar Link"
                                                     >
-                                                      <Pencil className="w-3.5 h-3.5" />
+                                                      <Copy className="w-3.5 h-3.5" />
                                                     </button>
-                                                    <button 
-                                                      onClick={() => handleFaturar(inst)}
-                                                      className="px-2.5 py-1.5 bg-slate-900 text-white text-[8px] font-bold rounded-lg hover:bg-black transition-all uppercase tracking-widest flex items-center gap-1.5"
+                                                    <a 
+                                                      href={inst.payment_link} 
+                                                      target="_blank" 
+                                                      rel="noopener noreferrer"
+                                                      className="p-1.5 text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"
+                                                      title="Abrir Checkout InfinitePay"
                                                     >
-                                                      <TrendingUp className="w-3 h-3 text-indigo-400" />
-                                                      Faturar
-                                                    </button>
+                                                      <ExternalLink className="w-3.5 h-3.5" />
+                                                    </a>
+                                                  </>
+                                                )}
+                                                
+                                                {inst.status !== 'Pago' ? (
+                                                  <button 
+                                                    onClick={() => {
+                                                      setEditingInstallment(inst);
+                                                      setIsEditModalOpen(true);
+                                                    }}
+                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                    title="Editar Data"
+                                                  >
+                                                    <Pencil className="w-3.5 h-3.5" />
+                                                  </button>
+                                                ) : (
+                                                  <div className="flex items-center gap-1.5 text-emerald-500 font-black text-[8px] uppercase tracking-widest px-1">
+                                                    <CheckCircle2 className="w-3 h-3.5" />
+                                                    Quitada
                                                   </div>
-                                              ) : (
-                                                <div className="flex items-center justify-end gap-1.5 text-emerald-500 font-black text-[8px] uppercase tracking-widest">
-                                                  <CheckCircle2 className="w-3 h-3.5" />
-                                                  Quitada
-                                                </div>
-                                              )}
+                                                )}
+
+                                                <button 
+                                                  onClick={() => handleFaturar(inst)}
+                                                  className="ml-1 px-2.5 py-1.5 bg-slate-900 text-white text-[8px] font-bold rounded-lg hover:bg-black transition-all uppercase tracking-widest flex items-center gap-1.5"
+                                                  title="Distribuir comissão / Faturar"
+                                                >
+                                                  <TrendingUp className="w-3 h-3 text-indigo-400" />
+                                                  Faturar
+                                                </button>
+                                              </div>
                                             </td>
                                           </tr>
                                         ))}

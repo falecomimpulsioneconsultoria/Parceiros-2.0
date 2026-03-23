@@ -12,6 +12,7 @@ export function AdminWithdrawals() {
   const [modalType, setModalType] = useState<'approve' | 'reject' | null>(null);
   const [loading, setLoading] = useState(false);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
     fetchWithdrawals();
@@ -62,14 +63,15 @@ export function AdminWithdrawals() {
 
       if (commError) throw commError;
 
-      alert('Saque aprovado e débito lançado no extrato!');
+      setMessage({ type: 'success', text: 'Saque aprovado e débito lançado no extrato!' });
       fetchWithdrawals();
       closeModal();
     } catch (error) {
       console.error('Erro ao aprovar saque:', error);
-      alert('Falha ao aprovar saque.');
+      setMessage({ type: 'error', text: 'Falha ao aprovar saque.' });
     } finally {
       setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -87,14 +89,15 @@ export function AdminWithdrawals() {
 
       if (error) throw error;
 
-      alert('Solicitação de saque rejeitada.');
+      setMessage({ type: 'success', text: 'Solicitação de saque rejeitada.' });
       fetchWithdrawals();
       closeModal();
     } catch (error) {
       console.error('Erro ao rejeitar saque:', error);
-      alert('Falha ao rejeitar saque.');
+      setMessage({ type: 'error', text: 'Falha ao rejeitar saque.' });
     } finally {
       setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -137,6 +140,16 @@ export function AdminWithdrawals() {
           <p className="text-slate-500 mt-1">Aprove ou rejeite as solicitações de saque dos parceiros.</p>
         </div>
       </div>
+
+      {message && (
+        <div className={cn(
+          "mb-6 p-4 rounded-xl flex items-center gap-3 animate-in slide-in-from-top-2 duration-300",
+          message.type === 'success' ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-red-50 text-red-700 border border-red-100"
+        )}>
+          {message.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+          <p className="text-sm font-medium">{message.text}</p>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

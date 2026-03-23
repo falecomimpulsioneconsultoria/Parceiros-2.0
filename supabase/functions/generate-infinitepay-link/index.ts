@@ -13,8 +13,8 @@ serve(async (req) => {
   }
 
   try {
-    const { dealId, installmentIndex, amount, description } = await req.json()
-    console.log('Gerando link para:', { dealId, installmentIndex, amount })
+    const { dealId, installmentIndex, amount, description, customer } = await req.json()
+    console.log('Gerando link para:', { dealId, installmentIndex, amount, customer: customer?.name })
     
     // 1. Conecta ao Supabase para pegar as chaves
     const supabase = createClient(
@@ -34,30 +34,35 @@ serve(async (req) => {
 
     // 2. Prepara payload para a InfinitePay
     const orderNsu = installmentIndex !== undefined ? `${dealId}_${installmentIndex}` : dealId
-    const priceInCents = Math.round(amount * 100)
 
-    const payload = {
+    const payload: any = {
       handle: settings.infinitepay_tag,
       order_nsu: orderNsu,
-      metadata: { order_nsu: orderNsu }, // Adicionando como metadado para garantir que retorne no webhook
       webhook_url: `https://${new URL(Deno.env.get('SUPABASE_URL') || '').hostname.split('.')[0]}.supabase.co/functions/v1/infinitepay-webhook`,
       items: [
         {
           quantity: 1,
-          price: priceInCents,
+          price: Math.round(amount * 100), // Valor em centavos
           description: description || 'Pagamento Impulsione Consultoria'
         }
       ]
     }
 
-    console.log('Payload InfinitePay (Public API):', payload)
+    // 3. Adiciona dados do cliente se disponíveis (pré-preenche o checkout)
+    if (customer) {
+      payload.customer = {}
+      if (customer.name) payload.customer.name = customer.name
+      if (customer.email) payload.customer.email = customer.email
+      if (customer.phone_number) payload.customer.phone_number = customer.phone_number
+    }
 
-    // 3. Chama a API da InfinitePay (Endpoint Público)
+    console.log('Payload InfinitePay:', JSON.stringify(payload))
+
+    // 4. Chama a API da InfinitePay (Endpoint Público)
     const response = await fetch('https://api.infinitepay.io/invoices/public/checkout/links', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-        // Sem o header de Authorization conforme documentação pública
       },
       body: JSON.stringify(payload)
     })
@@ -81,3 +86,4 @@ serve(async (req) => {
     })
   }
 })
+

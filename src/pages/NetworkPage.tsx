@@ -232,9 +232,9 @@ export function NetworkPage() {
                   ✓
                 </div>
               </div>
-              <div className="absolute -bottom-10 flex flex-col items-center">
-                <span className="text-sm font-bold text-slate-800">{user?.user_metadata?.full_name || 'Você'}</span>
-                <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">Admin</span>
+              <div className="absolute -bottom-12 flex flex-col items-center w-48">
+                <span className="text-sm font-bold text-slate-800 text-center leading-tight">{currentProfile?.full_name || user?.user_metadata?.full_name || 'Sponsor Master'}</span>
+                <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mt-1">Sponsor Master</span>
               </div>
               
               {/* Vertical Line to Children */}
@@ -245,19 +245,16 @@ export function NetworkPage() {
 
             {/* First Level Children */}
             {expandedIds['root'] && (
-              <div className="flex justify-center gap-12 relative pt-4">
-                {/* Horizontal line connecting children */}
-                {network.length > 1 && (
-                  <div className="absolute top-0 left-0 right-0 h-px bg-slate-300 mx-auto" style={{ width: `calc(100% - ${100/network.length}%)` }}></div>
-                )}
-                
-                {network.map((p) => (
+              <div className="flex justify-center gap-6 relative pt-4">
+                {network.map((p, index) => (
                   <NetworkTreeNode 
                     key={p.id} 
                     partner={p} 
                     depth={1} 
                     toggleExpand={toggleExpand} 
                     expandedIds={expandedIds}
+                    isFirst={index === 0}
+                    isLast={index === network.length - 1}
                   />
                 ))}
               </div>
@@ -395,12 +392,16 @@ function NetworkTreeNode({
   partner, 
   depth, 
   toggleExpand, 
-  expandedIds 
+  expandedIds,
+  isFirst,
+  isLast 
 }: { 
   partner: any, 
   depth: number, 
   toggleExpand: (id: string, depth: number) => void,
-  expandedIds: Record<string, boolean>
+  expandedIds: Record<string, boolean>,
+  isFirst?: boolean,
+  isLast?: boolean
 }) {
   const isExpanded = !!expandedIds[partner.id];
   
@@ -412,9 +413,15 @@ function NetworkTreeNode({
   const hasVisibleChildren = visibleChildren.length > 0;
 
   return (
-    <div className="flex flex-col items-center relative min-w-[140px] animate-in zoom-in-95 duration-300">
+    <div className="flex flex-col items-center relative min-w-[120px] px-2 animate-in zoom-in-95 duration-300">
       {/* Connector line up to parent */}
-      <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-px h-4 bg-slate-300"></div>
+      {depth > 0 && (
+        <div className="absolute -top-4 left-0 right-0 flex justify-center">
+          <div className={cn("flex-1 h-0.5 mt-[15px] bg-slate-300", isFirst && "bg-transparent")} />
+          <div className="w-0.5 h-4 bg-slate-400" />
+          <div className={cn("flex-1 h-0.5 mt-[15px] bg-slate-300", isLast && "bg-transparent")} />
+        </div>
+      )}
       
       {/* Node */}
       <div 
@@ -441,8 +448,8 @@ function NetworkTreeNode({
       </div>
 
       {/* Label */}
-      <div className="mt-4 flex flex-col items-center">
-        <span className="text-[11px] font-bold text-slate-800 whitespace-nowrap">{partner.full_name}</span>
+      <div className="mt-4 flex flex-col items-center max-w-[120px]">
+        <span className="text-[11px] font-bold text-slate-800 text-center leading-tight">{partner.full_name}</span>
         <span className={cn(
           "text-[8px] font-extrabold uppercase tracking-tighter px-2 py-0.5 rounded-full mt-1 border shadow-sm",
           partner.partner_type === 'captador' ? "text-amber-700 bg-amber-50 border-amber-100" : "text-blue-700 bg-blue-50 border-blue-100"
@@ -453,24 +460,21 @@ function NetworkTreeNode({
 
       {/* Vertical Line down to children */}
       {isExpanded && hasVisibleChildren && (
-        <div className="w-px h-8 bg-slate-300"></div>
+        <div className="w-0.5 h-6 bg-slate-400"></div>
       )}
 
       {/* Children Container */}
       {isExpanded && hasVisibleChildren && (
-        <div className="flex justify-center gap-12 relative pt-4">
-          {/* Horizontal connecting line for children */}
-          {visibleChildren.length > 1 && (
-            <div className="absolute top-0 left-0 right-0 h-px bg-slate-300 mx-auto" style={{ width: `calc(100% - ${100/visibleChildren.length}%)` }}></div>
-          )}
-          
-          {visibleChildren.map((child: any) => (
+        <div className="flex justify-center gap-4 relative pt-4">
+          {visibleChildren.map((child: any, index: number) => (
             <NetworkTreeNode 
               key={child.id} 
               partner={child} 
               depth={depth + 1} 
               toggleExpand={toggleExpand} 
               expandedIds={expandedIds}
+              isFirst={index === 0}
+              isLast={index === visibleChildren.length - 1}
             />
           ))}
         </div>

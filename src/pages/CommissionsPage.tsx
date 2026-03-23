@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, ArrowUpRight, Clock, CheckCircle2, Search, Filter, Download, Wallet, X, AlertCircle } from 'lucide-react';
+import { DollarSign, ArrowUpRight, Clock, CheckCircle2, Search, Filter, Download, Wallet, X, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,9 +10,31 @@ type Commission = Database['public']['Tables']['commissions']['Row'] & {
   products?: { name: string } | null;
   type?: 'credit' | 'debit';
   notes?: string;
+  lead_deals?: { deal_number: number | null } | null;
 };
 
 type Withdrawal = Database['public']['Tables']['withdrawals']['Row'];
+
+const getParsedNotes = (notes: string) => {
+  if (!notes) return { level: '', installment: '' };
+  
+  if (notes.startsWith('Nível 1')) {
+    const parts = notes.split(' - ');
+    if (parts.length > 1) {
+      return { level: parts[0], installment: parts[1] };
+    }
+  }
+  
+  const match = notes.match(/^(.*?)\s*\((.*?)\)$/);
+  if (match) {
+    let level = match[1].trim();
+    if (level === 'Comissão Captador') level = 'Captador';
+    if (level === 'Comissão Vendedor') level = 'Vendedor';
+    return { level: level, installment: match[2].trim() };
+  }
+  
+  return { level: notes, installment: '' };
+};
 
 export function CommissionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,7 +67,8 @@ export function CommissionsPage() {
         .select(`
           *,
           leads (name),
-          products (name)
+          products (name),
+          lead_deals:deal_id (deal_number)
         `)
         .order('created_at', { ascending: false });
 
@@ -59,13 +82,23 @@ export function CommissionsPage() {
         withQuery = withQuery.eq('partner_id', user?.id);
       }
 
-      const [commRes, withRes] = await Promise.all([commQuery, withQuery]);
+      const settingsQuery = supabase
+        .from('system_settings')
+        .select('min_withdrawal')
+        .limit(1)
+        .maybeSingle();
+
+      const [commRes, withRes, settingsRes] = await Promise.all([commQuery, withQuery, settingsQuery]);
 
       if (commRes.error) throw commRes.error;
       if (withRes.error) throw withRes.error;
 
-      setCommissions(commRes.data as Commission[] || []);
+      setCommissions(((commRes.data as unknown) as Commission[]) || []);
       setWithdrawals(withRes.data as Withdrawal[] || []);
+      
+      if (settingsRes.data && settingsRes.data.min_withdrawal) {
+        setMinWithdrawal(settingsRes.data.min_withdrawal);
+      }
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
       setMessage({ type: 'error', text: 'Não foi possível carregar as comissões.' });
@@ -82,8 +115,8 @@ export function CommissionsPage() {
     try {
       const amount = parseFloat(withdrawAmount.replace(',', '.'));
       
-      if (isNaN(amount) || amount < 100) {
-        throw new Error('Valor mínimo para saque é R$ 100,00');
+      if (isNaN(amount) || amount < minWithdrawal) {
+        throw new Error(`Valor mínimo para saque é R$ ${minWithdrawal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       }
 
       if (amount > availableBalance) {
@@ -156,7 +189,8 @@ export function CommissionsPage() {
       amount: c.amount,
       type: c.type || 'credit',
       status: c.status,
-      notes: c.notes
+      notes: c.notes,
+      dealNumber: c.lead_deals?.deal_number
     })),
     ...withdrawals.filter(w => w.status === 'Pendente').map(w => ({
       id: w.id,
@@ -165,9 +199,55 @@ export function CommissionsPage() {
       customer: '-',
       amount: w.amount,
       type: 'debit',
-      status: w.status
+      status: w.status,
+      dealNumber: undefined
     }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const groupedStatement = React.useMemo(() => {
+    const groups = sortedStatement.reduce((acc, curr) => {
+      const customer = curr.customer !== '-' ? curr.customer : 'Solicitações de Saque';
+      if (!acc[customer]) {
+        acc[customer] = {
+          items: [],
+          total: 0,
+          latestDate: new Date(0).getTime(),
+          deals: {}
+        };
+      }
+      
+      const val = curr.type === 'credit' ? Number(curr.amount) : -Number(curr.amount);
+      acc[customer].items.push(curr);
+      acc[customer].total += val;
+      
+      const dTime = new Date(curr.date).getTime();
+      if (dTime > acc[customer].latestDate) {
+        acc[customer].latestDate = dTime;
+      }
+      
+      const dealNumberStr = curr.dealNumber ? `Negócio #${curr.dealNumber.toString().padStart(4, '0')}` : 'Outras Comissões';
+      const dealName = curr.description && curr.description !== 'Saque solicitado (Pendente)' && curr.description !== 'Saque realizado' && curr.dealNumber 
+        ? `${dealNumberStr} - ${curr.description}` 
+        : (curr.type === 'debit' ? 'Saques' : dealNumberStr);
+      
+      if (!acc[customer].deals[dealName]) {
+        acc[customer].deals[dealName] = { items: [], total: 0 };
+      }
+      acc[customer].deals[dealName].items.push(curr);
+      acc[customer].deals[dealName].total += val;
+      
+      return acc;
+    }, {} as Record<string, { items: typeof sortedStatement, total: number, latestDate: number, deals: Record<string, { items: typeof sortedStatement, total: number }> }>);
+
+    return Object.entries(groups).sort((a, b) => b[1].latestDate - a[1].latestDate);
+  }, [sortedStatement]);
+
+  const [minWithdrawal, setMinWithdrawal] = useState(100);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = (customer: string) => {
+    setExpandedGroups(prev => ({ ...prev, [customer]: !prev[customer] }));
+  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -177,7 +257,7 @@ export function CommissionsPage() {
     switch (status) {
       case 'Pago': return 'bg-emerald-100 text-emerald-700';
       case 'Disponível': return 'bg-blue-100 text-blue-700';
-      case 'Pendente': return 'bg-amber-100 text-amber-700';
+      case 'Pendente': return 'bg-yellow-100 text-yellow-800';
       case 'Rejeitado': return 'bg-red-100 text-red-700';
       default: return 'bg-slate-100 text-slate-700';
     }
@@ -250,8 +330,8 @@ export function CommissionsPage() {
             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
               <tr>
                 <th className="px-6 py-4">Data</th>
-                <th className="px-6 py-4">Descrição</th>
-                <th className="px-6 py-4">Tipo</th>
+                <th className="px-6 py-4">Detalhes</th>
+                <th className="px-6 py-4">Tipo/Nível</th>
                 <th className="px-6 py-4 text-right">Valor</th>
                 <th className="px-6 py-4">Status</th>
               </tr>
@@ -264,48 +344,98 @@ export function CommissionsPage() {
                     Carregando extrato...
                   </td>
                 </tr>
-              ) : sortedStatement.length > 0 ? (
-                sortedStatement.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
-                      {new Date(item.date).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-slate-900 line-clamp-1">{item.description}</div>
-                      <div className="text-[10px] text-slate-500 italic">{(item as any).notes}</div>
-                      {item.customer !== '-' && (
-                        <div className="text-xs text-slate-500">Cliente: {item.customer}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className={cn(
-                        "flex items-center gap-1.5 font-medium",
-                        item.type === 'credit' ? "text-emerald-600" : "text-red-600"
-                      )}>
-                        {item.type === 'credit' ? (
-                          <div className="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center">
-                            <ArrowUpRight className="w-3.5 h-3.5" />
+              ) : groupedStatement.length > 0 ? (
+                groupedStatement.map(([customer, group]) => (
+                  <React.Fragment key={customer}>
+                    <tr 
+                      onClick={() => toggleGroup(customer)}
+                      className="bg-slate-50 border-b border-emerald-100/50 hover:bg-slate-100 cursor-pointer transition-colors"
+                    >
+                      <td colSpan={5} className="px-6 py-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-1 rounded bg-slate-200 text-slate-500">
+                              {expandedGroups[customer] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                            </div>
+                            <span className="font-semibold text-slate-800">{customer}</span>
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">
+                              {group.items.length} {group.items.length === 1 ? 'item' : 'itens'}
+                            </span>
                           </div>
-                        ) : (
-                          <div className="w-6 h-6 rounded-full bg-red-50 flex items-center justify-center rotate-90">
-                            <ArrowUpRight className="w-3.5 h-3.5" />
+                          <div className="flex items-center gap-4">
+                            <span className="text-sm font-medium text-slate-500">Saldo Oportunidade:</span>
+                            <span className={cn(
+                              "font-bold text-sm",
+                              group.total >= 0 ? "text-emerald-600" : "text-red-600"
+                            )}>
+                              {group.total >= 0 ? '+' : ''}{formatCurrency(group.total)}
+                            </span>
                           </div>
-                        )}
-                        {item.type === 'credit' ? 'Crédito' : 'Débito'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right font-bold text-slate-900 whitespace-nowrap">
-                      {item.type === 'debit' ? '-' : '+'}{formatCurrency(item.amount)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
-                        getStatusStyle(item.status)
-                      )}>
-                        {item.status}
-                      </span>
-                    </td>
-                  </tr>
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedGroups[customer] && Object.entries(group.deals).map(([dealName, dealGroup]) => (
+                      <React.Fragment key={dealName}>
+                        <tr className="bg-slate-50/50 border-b border-emerald-100/50">
+                          <td colSpan={5} className="px-6 py-2">
+                            <div className="flex items-center justify-between pl-8">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+                                <span className="text-sm font-semibold text-slate-700">{dealName}</span>
+                                <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-medium">
+                                  {dealGroup.items.length} {dealGroup.items.length === 1 ? 'item' : 'itens'}
+                                </span>
+                              </div>
+                              <div className={cn("text-xs font-bold", dealGroup.total >= 0 ? "text-emerald-600" : "text-red-600")}>
+                                {dealGroup.total >= 0 ? '+' : ''}{formatCurrency(dealGroup.total)}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        {dealGroup.items.map((item) => (
+                          <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 whitespace-nowrap text-slate-500 pl-16">
+                              <div className="font-medium text-slate-700">{new Date(item.date).toLocaleDateString('pt-BR')}</div>
+                              <div className="text-xs text-slate-400 mt-0.5">{new Date(item.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="font-medium text-slate-900 line-clamp-1">{item.description}</div>
+                              {getParsedNotes((item as any).notes || '').installment && (
+                                <div className="text-[10px] text-slate-500 italic">{getParsedNotes((item as any).notes || '').installment}</div>
+                              )}
+                              {item.customer !== '-' && (
+                                <div className="text-[10px] text-slate-500 mt-0.5">Cliente: {item.customer}</div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col items-start gap-1">
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                                  item.type === 'credit' ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                                )}>
+                                  {item.type === 'credit' ? 'Crédito' : 'Débito'}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium italic">
+                                  {getParsedNotes((item as any).notes || '').level || 'Transação interna'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right font-bold text-slate-900 whitespace-nowrap">
+                              {item.type === 'debit' ? '-' : '+'}{formatCurrency(item.amount)}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={cn(
+                                "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
+                                getStatusStyle(item.status)
+                              )}>
+                                {item.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </React.Fragment>
                 ))
               ) : (
                 <tr>
@@ -360,7 +490,7 @@ export function CommissionsPage() {
                   <div className="flex justify-between items-center mt-2">
                     <p className="text-xs text-slate-500 flex items-center">
                       <AlertCircle className="w-3 h-3 mr-1" />
-                      Valor mínimo: R$ 100,00
+                      Valor mínimo: R$ {minWithdrawal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                     <button 
                       type="button"
@@ -395,7 +525,7 @@ export function CommissionsPage() {
                 </button>
                 <button 
                   type="submit"
-                  disabled={loading || availableBalance < 100}
+                  disabled={loading || availableBalance < minWithdrawal}
                   className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
                 >
                   {loading ? 'Processando...' : 'Confirmar Saque'}
