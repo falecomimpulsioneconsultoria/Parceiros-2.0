@@ -178,6 +178,7 @@ export interface Database {
           pending_description?: string | null
           pending_document_url?: string | null
           partner_role?: string | null
+          captador_id?: string | null
           created_at?: string
         }
         Update: {
@@ -193,6 +194,7 @@ export interface Database {
           pending_description?: string | null
           pending_document_url?: string | null
           partner_role?: string | null
+          captador_id?: string | null
           created_at?: string
         }
         Relationships: [

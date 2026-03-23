@@ -190,24 +190,57 @@ export function AdminPartners() {
   };
 
   const handleDeletePartner = async (partner: Profile) => {
-    if (!window.confirm(`Tem certeza que deseja excluir o parceiro ${partner.full_name || partner.email}? Esta ação é irreversível e pode falhar se houver dados vinculados.`)) {
+    if (!window.confirm(`Tem certeza que deseja excluir o parceiro ${partner.full_name || partner.email}? Esta ação é irreversível e todos os seus downlines, clientes e comissões serão movidos para o seu patrocinador.`)) {
       return;
     }
 
+    setLoading(true);
     try {
-      const { error } = await supabase
+      // 1. Identificar o patrocinador herdeiro (quem indicou o parceiro que será excluído)
+      const sponsorId = partner.referred_by;
+
+      // 2. Herança de Rede: Mover downlines (quem este parceiro indicou)
+      const { error: profilesError } = await supabase
+        .from('profiles')
+        .update({ referred_by: sponsorId })
+        .eq('referred_by', partner.id);
+      if (profilesError) throw new Error(`Erro ao mover downlines: ${profilesError.message}`);
+
+      // 3. Herança de Negócios: Mover Leads e Negócios
+      const { error: leadsPartnerError } = await supabase.from('leads').update({ partner_id: sponsorId }).eq('partner_id', partner.id);
+      if (leadsPartnerError) throw new Error(`Erro ao mover leads (partner): ${leadsPartnerError.message}`);
+      
+      const { error: leadsCaptadorError } = await supabase.from('leads').update({ captador_id: sponsorId }).eq('captador_id', partner.id);
+      if (leadsCaptadorError) throw new Error(`Erro ao mover leads (captador): ${leadsCaptadorError.message}`);
+
+      const { error: dealsPartnerError } = await supabase.from('lead_deals').update({ partner_id: sponsorId }).eq('partner_id', partner.id);
+      if (dealsPartnerError) throw new Error(`Erro ao mover negócios (partner): ${dealsPartnerError.message}`);
+
+      const { error: dealsCaptadorError } = await supabase.from('lead_deals').update({ captador_id: sponsorId }).eq('captador_id', partner.id);
+      if (dealsCaptadorError) throw new Error(`Erro ao mover negócios (captador): ${dealsCaptadorError.message}`);
+
+      // 4. Integridade Financeira: Mover Comissões e Saques (Histórico)
+      await supabase.from('commissions').update({ partner_id: sponsorId }).eq('partner_id', partner.id);
+      await supabase.from('withdrawals').update({ partner_id: sponsorId }).eq('partner_id', partner.id);
+
+      // 5. Limpeza de Vínculos de Produtos/Links
+      await supabase.from('partner_products').delete().eq('partner_id', partner.id);
+
+      // 6. Exclusão Final do Perfil
+      const { error: deleteError } = await supabase
         .from('profiles')
         .delete()
         .eq('id', partner.id);
       
-      if (error) throw error;
+      if (deleteError) throw deleteError;
       
       setPartners(partners.filter(p => p.id !== partner.id));
-      setMessage({ type: 'success', text: 'Parceiro excluído com sucesso!' });
+      setMessage({ type: 'success', text: 'Parceiro excluído e rede transferida com sucesso!' });
     } catch (error: any) {
-      console.error('Erro ao excluir parceiro:', error);
-      setMessage({ type: 'error', text: 'Não foi possível excluir o parceiro. Verifique se ele possui clientes ou negócios vinculados.' });
+      console.error('Erro na exclusão segura:', error);
+      setMessage({ type: 'error', text: `Não foi possível excluir: ${error.message}` });
     } finally {
+      setLoading(false);
       setTimeout(() => setMessage(null), 5000);
     }
   };
