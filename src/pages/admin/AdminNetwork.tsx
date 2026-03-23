@@ -182,7 +182,7 @@ export function AdminNetwork() {
       {viewMode === 'tree' ? (
         <div className="bg-slate-50 border border-slate-200 rounded-3xl overflow-x-auto min-h-[600px] relative scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent shadow-inner">
           <div className="inline-flex flex-col items-center min-w-full py-12 lg:py-24">
-            <div className="flex justify-center gap-12 relative px-32">
+            <div className="flex justify-center gap-6 relative px-12">
               {network.map((p, index) => (
                 <NetworkTreeNode 
                   key={p.id} 
@@ -267,7 +267,7 @@ function NetworkTreeNode({
   const hasVisibleChildren = partner.children && partner.children.length > 0;
 
   return (
-    <div className="flex flex-col items-center relative min-w-[200px] animate-in zoom-in-95 duration-300">
+    <div className="flex flex-col items-center relative min-w-[140px] animate-in zoom-in-95 duration-300">
       {/* Conector Superior (Vertical + Horizontal Bridge) */}
       {depth > 1 && (
         <div className="absolute -top-8 left-0 right-0 flex items-start">
@@ -327,7 +327,7 @@ function NetworkTreeNode({
 
       {/* Children Container */}
       {isExpanded && hasVisibleChildren && (
-        <div className="flex justify-center gap-12 relative pt-8">
+        <div className="flex justify-center gap-6 relative pt-8">
           {partner.children.map((child: any, index: number) => (
             <NetworkTreeNode 
               key={child.id} 
