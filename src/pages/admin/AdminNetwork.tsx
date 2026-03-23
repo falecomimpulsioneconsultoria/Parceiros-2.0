@@ -183,13 +183,15 @@ export function AdminNetwork() {
         <div className="bg-slate-50 border border-slate-200 rounded-3xl overflow-x-auto min-h-[600px] relative scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent shadow-inner">
           <div className="inline-flex flex-col items-center min-w-full py-12 lg:py-24">
             <div className="flex justify-center gap-12 relative px-32">
-              {network.map((p) => (
+              {network.map((p, index) => (
                 <NetworkTreeNode 
                   key={p.id} 
                   partner={p} 
                   depth={1} 
                   toggleExpand={toggleExpand} 
                   expandedIds={expandedIds}
+                  isFirst={index === 0}
+                  isLast={index === network.length - 1}
                 />
               ))}
             </div>
@@ -250,24 +252,28 @@ function NetworkTreeNode({
   partner, 
   depth, 
   toggleExpand, 
-  expandedIds 
+  expandedIds,
+  isFirst,
+  isLast 
 }: { 
   partner: any, 
   depth: number, 
   toggleExpand: (id: string) => void,
-  expandedIds: Record<string, boolean>
+  expandedIds: Record<string, boolean>,
+  isFirst?: boolean,
+  isLast?: boolean
 }) {
   const isExpanded = !!expandedIds[partner.id];
   const hasVisibleChildren = partner.children && partner.children.length > 0;
 
   return (
-    <div className="group flex flex-col items-center relative min-w-[200px] animate-in zoom-in-95 duration-300">
+    <div className="flex flex-col items-center relative min-w-[200px] animate-in zoom-in-95 duration-300">
       {/* Conector Superior (Vertical + Horizontal Bridge) */}
       {depth > 1 && (
         <div className="absolute -top-8 left-0 right-0 flex items-start">
-          <div className="flex-1 h-0.5 bg-slate-600 group-first:bg-transparent" />
+          <div className={cn("flex-1 h-0.5 bg-slate-600", isFirst && "bg-transparent")} />
           <div className="w-0.5 h-8 bg-slate-600" />
-          <div className="flex-1 h-0.5 bg-slate-600 group-last:bg-transparent" />
+          <div className={cn("flex-1 h-0.5 bg-slate-600", isLast && "bg-transparent")} />
         </div>
       )}
       
@@ -322,13 +328,15 @@ function NetworkTreeNode({
       {/* Children Container */}
       {isExpanded && hasVisibleChildren && (
         <div className="flex justify-center gap-12 relative pt-8">
-          {partner.children.map((child: any) => (
+          {partner.children.map((child: any, index: number) => (
             <NetworkTreeNode 
               key={child.id} 
               partner={child} 
               depth={depth + 1} 
               toggleExpand={toggleExpand} 
               expandedIds={expandedIds}
+              isFirst={index === 0}
+              isLast={index === partner.children.length - 1}
             />
           ))}
         </div>
