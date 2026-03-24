@@ -27,6 +27,7 @@ export function AdminProducts() {
     status: 'Ativo',
     cost: '',
     payment_type: 'avista' as 'avista' | 'parcelado',
+    installments_count: 12,
     installment_config: null as any,
     image_url: ''
   });
@@ -41,6 +42,26 @@ export function AdminProducts() {
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  useEffect(() => {
+    if (newProduct.payment_type === 'parcelado' && Array.isArray(newProduct.installment_config)) {
+      const sum = (newProduct.installment_config as any[]).reduce((acc: number, curr: any) => {
+        const val = typeof curr.value === 'string' ? parseFloat(curr.value.replace(',', '.')) : curr.value;
+        return acc + (val || 0);
+      }, 0);
+      setNewProduct(prev => ({ ...prev, price: String(sum.toFixed(2)).replace('.', ',') }));
+    }
+  }, [newProduct.installment_config, newProduct.payment_type]);
+
+  useEffect(() => {
+    if (editProduct && editProduct.payment_type === 'parcelado' && Array.isArray(editProduct.installment_config)) {
+      const sum = (editProduct.installment_config as any[]).reduce((acc: number, curr: any) => {
+        const val = typeof curr.value === 'string' ? parseFloat(curr.value.replace(',', '.')) : curr.value;
+        return acc + (val || 0);
+      }, 0);
+      setEditProduct((prev: any) => prev ? { ...prev, price: sum } : prev);
+    }
+  }, [editProduct?.installment_config, editProduct?.payment_type]);
 
   const fetchProducts = async () => {
     try {
@@ -116,8 +137,20 @@ export function AdminProducts() {
         link: newProduct.link,
         status: newProduct.status,
         cost: parseFloat(newProduct.cost.replace(',', '.')) || 0,
-        payment_type: newProduct.payment_type,
-        installment_config: newProduct.installment_config,
+        installments_count: newProduct.installments_count,
+        installment_config: newProduct.payment_type === 'parcelado' && Array.isArray(newProduct.installment_config) 
+          ? (newProduct.installment_config as any[]).map(inst => ({
+              ...inst,
+              value: typeof inst.value === 'string' ? parseFloat(String(inst.value).replace(',', '.')) || 0 : inst.value,
+              commissions: {
+                direct: typeof inst.commissions?.direct === 'string' ? parseFloat(String(inst.commissions.direct).replace(',', '.')) || 0 : inst.commissions?.direct || 0,
+                indicator: typeof inst.commissions?.indicator === 'string' ? parseFloat(String(inst.commissions.indicator).replace(',', '.')) || 0 : inst.commissions?.indicator || 0,
+                captador: typeof inst.commissions?.captador === 'string' ? parseFloat(String(inst.commissions.captador).replace(',', '.')) || 0 : inst.commissions?.captador || 0,
+                lvl1: typeof inst.commissions?.lvl1 === 'string' ? parseFloat(String(inst.commissions.lvl1).replace(',', '.')) || 0 : inst.commissions?.lvl1 || 0,
+                lvl2: typeof inst.commissions?.lvl2 === 'string' ? parseFloat(String(inst.commissions.lvl2).replace(',', '.')) || 0 : inst.commissions?.lvl2 || 0,
+              }
+            }))
+          : newProduct.installment_config,
         image_url: newProduct.image_url
       };
       const { data, error } = await supabase.from('products').insert([productData]).select();
@@ -161,18 +194,31 @@ export function AdminProducts() {
         .update({
           name: editProduct.name,
           description: editProduct.description,
-          price: editProduct.price,
-          commission_value: editProduct.commission_direct,
-          commission_direct: editProduct.commission_direct,
-          commission_indicator: editProduct.commission_indicator,
-          commission_captador: editProduct.commission_captador,
-          commission_lvl1: editProduct.commission_lvl1,
-          commission_lvl2: editProduct.commission_lvl2,
+          price: typeof editProduct.price === 'string' ? parseFloat(String(editProduct.price).replace(',', '.')) || 0 : editProduct.price,
+          commission_value: typeof editProduct.commission_direct === 'string' ? parseFloat(String(editProduct.commission_direct).replace(',', '.')) || 0 : editProduct.commission_direct,
+          commission_direct: typeof editProduct.commission_direct === 'string' ? parseFloat(String(editProduct.commission_direct).replace(',', '.')) || 0 : editProduct.commission_direct,
+          commission_indicator: typeof editProduct.commission_indicator === 'string' ? parseFloat(String(editProduct.commission_indicator).replace(',', '.')) || 0 : editProduct.commission_indicator,
+          commission_captador: typeof editProduct.commission_captador === 'string' ? parseFloat(String(editProduct.commission_captador).replace(',', '.')) || 0 : editProduct.commission_captador,
+          commission_lvl1: typeof editProduct.commission_lvl1 === 'string' ? parseFloat(String(editProduct.commission_lvl1).replace(',', '.')) || 0 : editProduct.commission_lvl1,
+          commission_lvl2: typeof editProduct.commission_lvl2 === 'string' ? parseFloat(String(editProduct.commission_lvl2).replace(',', '.')) || 0 : editProduct.commission_lvl2,
           link: editProduct.link,
           status: editProduct.status,
-          cost: editProduct.cost,
+          cost: typeof editProduct.cost === 'string' ? parseFloat(String(editProduct.cost).replace(',', '.')) || 0 : editProduct.cost,
           payment_type: editProduct.payment_type,
-          installment_config: editProduct.installment_config,
+          installments_count: (editProduct as any).installments_count || 12,
+          installment_config: editProduct.payment_type === 'parcelado' && Array.isArray(editProduct.installment_config) 
+            ? (editProduct.installment_config as any[]).map(inst => ({
+                ...inst,
+                value: typeof inst.value === 'string' ? parseFloat(String(inst.value).replace(',', '.')) || 0 : inst.value,
+                commissions: {
+                  direct: typeof inst.commissions?.direct === 'string' ? parseFloat(String(inst.commissions.direct).replace(',', '.')) || 0 : inst.commissions?.direct || 0,
+                  indicator: typeof inst.commissions?.indicator === 'string' ? parseFloat(String(inst.commissions.indicator).replace(',', '.')) || 0 : inst.commissions?.indicator || 0,
+                  captador: typeof inst.commissions?.captador === 'string' ? parseFloat(String(inst.commissions.captador).replace(',', '.')) || 0 : inst.commissions?.captador || 0,
+                  lvl1: typeof inst.commissions?.lvl1 === 'string' ? parseFloat(String(inst.commissions.lvl1).replace(',', '.')) || 0 : inst.commissions?.lvl1 || 0,
+                  lvl2: typeof inst.commissions?.lvl2 === 'string' ? parseFloat(String(inst.commissions.lvl2).replace(',', '.')) || 0 : inst.commissions?.lvl2 || 0,
+                }
+              }))
+            : editProduct.installment_config,
           image_url: editProduct.image_url
         })
         .eq('id', editProduct.id);
@@ -274,7 +320,8 @@ export function AdminProducts() {
                 <th className="px-6 py-4">Produto</th>
                 <th className="px-6 py-4">Preço</th>
                 <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Comissões (V / C / N1 / N2)</th>
+                <th className="px-6 py-4">Comissões (V / C / I / N1 / N2)</th>
+                <th className="px-6 py-4 min-w-[160px]">Comiss. (Entrada/1ª Parc)</th>
                 <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
@@ -299,7 +346,15 @@ export function AdminProducts() {
                           )}
                         </div>
                         <div>
-                          <div className="font-medium text-slate-900">{product.name}</div>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="font-medium text-slate-900">{product.name}</span>
+                            <span className={cn(
+                              "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider",
+                              product.payment_type === 'parcelado' ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"
+                            )}>
+                              {product.payment_type === 'parcelado' ? 'Parcelado' : 'À Vista'}
+                            </span>
+                          </div>
                           <div className="text-xs text-slate-500 line-clamp-1 max-w-xs">{product.description}</div>
                         </div>
                       </div>
@@ -319,9 +374,42 @@ export function AdminProducts() {
                       <div className="flex flex-col gap-0.5">
                         <span className="text-emerald-600 font-bold text-xs">V: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_direct || 0)}</span>
                         <span className="text-amber-600 font-bold text-xs">C: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_captador || 0)}</span>
+                        <span className="text-purple-600 font-bold text-xs">I: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_indicator || 0)}</span>
                         <span className="text-blue-600 text-[10px] font-medium">N1: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_lvl1 || 0)}</span>
                         <span className="text-indigo-500 text-[10px] font-medium">N2: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.commission_lvl2 || 0)}</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {product.payment_type === 'parcelado' && Array.isArray(product.installment_config) ? (
+                        <div className="flex flex-col gap-1">
+                          {product.installment_config[0] && (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[9px] text-slate-500 font-bold uppercase">Entrada</span>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-emerald-600 font-bold text-[10px]">V: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[0].commissions?.direct || 0)}</span>
+                                <span className="text-amber-600 font-bold text-[10px]">C: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[0].commissions?.captador || 0)}</span>
+                                <span className="text-purple-600 font-bold text-[10px]">I: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[0].commissions?.indicator || 0)}</span>
+                                <span className="text-blue-600 text-[10px] font-medium">N1: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[0].commissions?.lvl1 || 0)}</span>
+                                <span className="text-indigo-500 text-[10px] font-medium">N2: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[0].commissions?.lvl2 || 0)}</span>
+                              </div>
+                            </div>
+                          )}
+                          {product.installment_config[1] && (
+                            <div className="flex flex-col gap-0.5 mt-1 border-t border-slate-100 pt-1">
+                              <span className="text-[9px] text-slate-500 font-bold uppercase">1ª Parcela</span>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-emerald-600 font-bold text-[10px]">V: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[1].commissions?.direct || 0)}</span>
+                                <span className="text-amber-600 font-bold text-[10px]">C: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[1].commissions?.captador || 0)}</span>
+                                <span className="text-purple-600 font-bold text-[10px]">I: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[1].commissions?.indicator || 0)}</span>
+                                <span className="text-blue-600 text-[10px] font-medium">N1: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[1].commissions?.lvl1 || 0)}</span>
+                                <span className="text-indigo-500 text-[10px] font-medium">N2: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((product.installment_config as any)[1].commissions?.lvl2 || 0)}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                         <span className="text-xs text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -429,8 +517,14 @@ export function AdminProducts() {
                       required
                       value={newProduct.price}
                       onChange={e => setNewProduct({...newProduct, price: e.target.value})}
+                      disabled={newProduct.payment_type === 'parcelado'}
                       placeholder="0,00"
-                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 outline-none transition-all"
+                      className={cn(
+                        "w-full px-4 py-1.5 border hover:border-slate-300 rounded-lg focus:outline-none transition-all",
+                        newProduct.payment_type === 'parcelado'
+                          ? "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed"
+                          : "bg-slate-50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                      )}
                     />
                   </div>
                   <div className="space-y-1">
@@ -476,7 +570,8 @@ export function AdminProducts() {
                       <button
                         type="button"
                         onClick={() => {
-                          const config = Array.from({length: 13}, (_, i) => ({
+                          const count = newProduct.installments_count || 12;
+                          const config = Array.from({length: count + 1}, (_, i) => ({
                             label: i === 0 ? 'Entrada' : `Parcela ${i}`,
                             value: 0,
                             commissions: { direct: 0, indicator: 0, captador: 0, lvl1: 0, lvl2: 0 }
@@ -494,6 +589,35 @@ export function AdminProducts() {
                       </button>
                     </div>
                   </div>
+
+                  {newProduct.payment_type === 'parcelado' && (
+                    <div className="md:col-span-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-slate-700">Quantidade de Parcelas (excluíndo entrada)</label>
+                        <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">Total de itens: {(newProduct.installments_count || 0) + 1}</span>
+                      </div>
+                      <input 
+                        type="number" 
+                        min="1"
+                        max="24"
+                        value={newProduct.installments_count}
+                        onChange={e => {
+                          const val = parseInt(e.target.value) || 1;
+                          const currentConfig = newProduct.installment_config || [];
+                          const newConfig = Array.from({length: val + 1}, (_, i) => {
+                            if (currentConfig[i]) return currentConfig[i];
+                            return {
+                              label: i === 0 ? 'Entrada' : `Parcela ${i}`,
+                              value: 0,
+                              commissions: { direct: 0, indicator: 0, captador: 0, lvl1: 0, lvl2: 0 }
+                            };
+                          });
+                          setNewProduct({...newProduct, installments_count: val, installment_config: newConfig});
+                        }}
+                        className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                      />
+                    </div>
+                  )}
 
                   {newProduct.payment_type === 'avista' ? (
                     <>
@@ -599,7 +723,7 @@ export function AdminProducts() {
                                     value={inst.value}
                                     onChange={e => {
                                       const newConfig = [...newProduct.installment_config];
-                                      newConfig[idx].value = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].value = e.target.value as any;
                                       setNewProduct({...newProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -612,7 +736,7 @@ export function AdminProducts() {
                                     value={inst.commissions.direct}
                                     onChange={e => {
                                       const newConfig = [...newProduct.installment_config];
-                                      newConfig[idx].commissions.direct = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.direct = e.target.value as any;
                                       setNewProduct({...newProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -625,7 +749,7 @@ export function AdminProducts() {
                                     value={inst.commissions.indicator}
                                     onChange={e => {
                                       const newConfig = [...newProduct.installment_config];
-                                      newConfig[idx].commissions.indicator = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.indicator = e.target.value as any;
                                       setNewProduct({...newProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -638,7 +762,7 @@ export function AdminProducts() {
                                     value={inst.commissions.captador}
                                     onChange={e => {
                                       const newConfig = [...newProduct.installment_config];
-                                      newConfig[idx].commissions.captador = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.captador = e.target.value as any;
                                       setNewProduct({...newProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -651,7 +775,7 @@ export function AdminProducts() {
                                     value={inst.commissions.lvl1}
                                     onChange={e => {
                                       const newConfig = [...newProduct.installment_config];
-                                      newConfig[idx].commissions.lvl1 = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.lvl1 = e.target.value as any;
                                       setNewProduct({...newProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -664,7 +788,7 @@ export function AdminProducts() {
                                     value={inst.commissions.lvl2}
                                     onChange={e => {
                                       const newConfig = [...newProduct.installment_config];
-                                      newConfig[idx].commissions.lvl2 = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.lvl2 = e.target.value as any;
                                       setNewProduct({...newProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -779,8 +903,14 @@ export function AdminProducts() {
                       step="0.01"
                       required
                       value={editProduct.price}
-                      onChange={e => setEditProduct({...editProduct, price: parseFloat(e.target.value)})}
-                      className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                      onChange={e => setEditProduct({...editProduct, price: e.target.value as any})}
+                      disabled={editProduct.payment_type === 'parcelado'}
+                      className={cn(
+                        "w-full px-4 py-1.5 border hover:border-slate-300 rounded-lg focus:outline-none transition-all",
+                        editProduct.payment_type === 'parcelado'
+                          ? "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed"
+                          : "bg-slate-50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600"
+                      )}
                     />
                   </div>
                   <div className="space-y-1">
@@ -789,8 +919,8 @@ export function AdminProducts() {
                       type="number" 
                       step="0.01"
                       required
-                      value={editProduct.cost || 0}
-                      onChange={e => setEditProduct({...editProduct, cost: parseFloat(e.target.value)})}
+                      value={editProduct.cost ?? ''}
+                      onChange={e => setEditProduct({...editProduct, cost: e.target.value as any})}
                       className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
                     />
                   </div>
@@ -825,7 +955,8 @@ export function AdminProducts() {
                       <button
                         type="button"
                         onClick={() => {
-                          const config = Array.from({length: 13}, (_, i) => ({
+                          const count = (editProduct as any).installments_count || 12;
+                          const config = Array.from({length: count + 1}, (_, i) => ({
                             label: i === 0 ? 'Entrada' : `Parcela ${i}`,
                             value: 0,
                             commissions: { direct: 0, indicator: 0, captador: 0, lvl1: 0, lvl2: 0 }
@@ -844,6 +975,35 @@ export function AdminProducts() {
                     </div>
                   </div>
 
+                  {editProduct.payment_type === 'parcelado' && (
+                    <div className="md:col-span-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-slate-700">Quantidade de Parcelas (excluíndo entrada)</label>
+                        <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">Total de itens: {((editProduct as any).installments_count || 0) + 1}</span>
+                      </div>
+                      <input 
+                        type="number" 
+                        min="1"
+                        max="24"
+                        value={(editProduct as any).installments_count || 12}
+                        onChange={e => {
+                          const val = parseInt(e.target.value) || 1;
+                          const currentConfig = editProduct.installment_config || [];
+                          const newConfig = Array.from({length: val + 1}, (_, i) => {
+                            if (currentConfig[i]) return currentConfig[i];
+                            return {
+                              label: i === 0 ? 'Entrada' : `Parcela ${i}`,
+                              value: 0,
+                              commissions: { direct: 0, indicator: 0, captador: 0, lvl1: 0, lvl2: 0 }
+                            };
+                          });
+                          setEditProduct({...editProduct, installments_count: val, installment_config: newConfig} as any);
+                        }}
+                        className="w-full px-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-600 transition-all"
+                      />
+                    </div>
+                  )}
+
                   {editProduct.payment_type === 'avista' ? (
                     <>
                       <div className="md:col-span-1 space-y-1">
@@ -852,8 +1012,8 @@ export function AdminProducts() {
                           type="number" 
                           step="0.01"
                           required
-                          value={editProduct.commission_direct || 0}
-                          onChange={e => setEditProduct({...editProduct, commission_direct: parseFloat(e.target.value)})}
+                          value={editProduct.commission_direct ?? ''}
+                          onChange={e => setEditProduct({...editProduct, commission_direct: e.target.value as any})}
                           className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                         />
                       </div>
@@ -863,8 +1023,8 @@ export function AdminProducts() {
                           type="number" 
                           step="0.01"
                           required
-                          value={editProduct.commission_indicator || 0}
-                          onChange={e => setEditProduct({...editProduct, commission_indicator: parseFloat(e.target.value)})}
+                          value={editProduct.commission_indicator ?? ''}
+                          onChange={e => setEditProduct({...editProduct, commission_indicator: e.target.value as any})}
                           className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                         />
                       </div>
@@ -874,8 +1034,8 @@ export function AdminProducts() {
                           type="number" 
                           step="0.01"
                           required
-                          value={editProduct.commission_captador || 0}
-                          onChange={e => setEditProduct({...editProduct, commission_captador: parseFloat(e.target.value)})}
+                          value={editProduct.commission_captador ?? ''}
+                          onChange={e => setEditProduct({...editProduct, commission_captador: e.target.value as any})}
                           className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                         />
                       </div>
@@ -886,8 +1046,8 @@ export function AdminProducts() {
                           type="number" 
                           step="0.01"
                           required
-                          value={editProduct.commission_lvl1 || 0}
-                          onChange={e => setEditProduct({...editProduct, commission_lvl1: parseFloat(e.target.value)})}
+                          value={editProduct.commission_lvl1 ?? ''}
+                          onChange={e => setEditProduct({...editProduct, commission_lvl1: e.target.value as any})}
                           className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                         />
                       </div>
@@ -897,8 +1057,8 @@ export function AdminProducts() {
                           type="number" 
                           step="0.01"
                           required
-                          value={editProduct.commission_lvl2 || 0}
-                          onChange={e => setEditProduct({...editProduct, commission_lvl2: parseFloat(e.target.value)})}
+                          value={editProduct.commission_lvl2 ?? ''}
+                          onChange={e => setEditProduct({...editProduct, commission_lvl2: e.target.value as any})}
                           className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                         />
                       </div>
@@ -950,7 +1110,7 @@ export function AdminProducts() {
                                     value={inst.value}
                                     onChange={e => {
                                       const newConfig = [...(editProduct.installment_config as any[])];
-                                      newConfig[idx].value = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].value = e.target.value as any;
                                       setEditProduct({...editProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -963,7 +1123,7 @@ export function AdminProducts() {
                                     value={inst.commissions.direct}
                                     onChange={e => {
                                       const newConfig = [...(editProduct.installment_config as any[])];
-                                      newConfig[idx].commissions.direct = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.direct = e.target.value as any;
                                       setEditProduct({...editProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -976,7 +1136,7 @@ export function AdminProducts() {
                                     value={inst.commissions.indicator}
                                     onChange={e => {
                                       const newConfig = [...(editProduct.installment_config as any[])];
-                                      newConfig[idx].commissions.indicator = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.indicator = e.target.value as any;
                                       setEditProduct({...editProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -989,7 +1149,7 @@ export function AdminProducts() {
                                     value={inst.commissions.captador}
                                     onChange={e => {
                                       const newConfig = [...(editProduct.installment_config as any[])];
-                                      newConfig[idx].commissions.captador = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.captador = e.target.value as any;
                                       setEditProduct({...editProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -1002,7 +1162,7 @@ export function AdminProducts() {
                                     value={inst.commissions.lvl1}
                                     onChange={e => {
                                       const newConfig = [...(editProduct.installment_config as any[])];
-                                      newConfig[idx].commissions.lvl1 = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.lvl1 = e.target.value as any;
                                       setEditProduct({...editProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"
@@ -1015,7 +1175,7 @@ export function AdminProducts() {
                                     value={inst.commissions.lvl2}
                                     onChange={e => {
                                       const newConfig = [...(editProduct.installment_config as any[])];
-                                      newConfig[idx].commissions.lvl2 = parseFloat(e.target.value) || 0;
+                                      newConfig[idx].commissions.lvl2 = e.target.value as any;
                                       setEditProduct({...editProduct, installment_config: newConfig});
                                     }}
                                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs"

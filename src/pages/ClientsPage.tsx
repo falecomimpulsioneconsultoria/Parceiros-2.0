@@ -49,9 +49,10 @@ const EXECUTION_STATUS_STYLE: Record<string, { color: string, icon: any }> = {
 };
 
 const PAYMENT_STATUS_STYLE: Record<string, { color: string, icon: any }> = {
-  'Pago':      { color: 'bg-emerald-50/50 text-emerald-700 border-emerald-200/50', icon: CheckCircle2 },
-  'Pendente':  { color: 'bg-amber-50/50 text-amber-700 border-amber-200/50',  icon: Clock },
-  'Cancelado': { color: 'bg-red-50/50 text-red-700 border-red-200/50',    icon: XCircle },
+  'Pago':         { color: 'bg-emerald-50/50 text-emerald-700 border-emerald-200/50', icon: CheckCircle2 },
+  'Pendente':     { color: 'bg-amber-50/50 text-amber-700 border-amber-200/50',  icon: Clock },
+  'Em Pagamento': { color: 'bg-violet-50 text-violet-600 border-violet-200/50',   icon: CreditCard },
+  'Cancelado':    { color: 'bg-red-50/50 text-red-700 border-red-200/50',    icon: XCircle },
 };
 
 type KanbanStage = {
@@ -154,7 +155,7 @@ export function ClientsPage() {
           lead_deals (
             id, status, value, payment_method, notes, product_id, created_at,
             execution_status, pending_description, pending_document_url, payment_status, payment_link,
-            products (name, image_url)
+            products (name, image_url, payment_type)
           )
         `).order('created_at', { ascending: false }),
         supabase.from('system_settings').select('lead_stages').eq('id', 1).single()
@@ -336,15 +337,19 @@ export function ClientsPage() {
                 .single();
 
               if (prodData?.payment_type === 'parcelado' && prodData?.installment_config) {
-                const installments = (prodData.installment_config as any[]).map((inst, idx) => ({
-                  deal_id: row.id,
-                  installment_number: idx,
-                  label: inst.label,
-                  value: inst.value,
-                  status: 'Pendente',
-                  commissions_config: inst.commissions
-                }));
-                await (supabase as any).from('deal_installments').insert(installments);
+                const installments = (prodData.installment_config as any[])
+                  .filter(inst => (inst.value || 0) > 0)
+                  .map((inst, idx) => ({
+                    deal_id: row.id,
+                    installment_number: idx,
+                    label: inst.label,
+                    value: inst.value,
+                    status: 'Pendente',
+                    commissions_config: inst.commissions
+                  }));
+                if (installments.length > 0) {
+                  await (supabase as any).from('deal_installments').insert(installments);
+                }
               } else {
                 let commissionAmount = 0;
                 const role = row.partner_role || 'Vendedor';
@@ -411,14 +416,41 @@ export function ClientsPage() {
 
   const confirmDeleteLead = async () => {
     if (!clientToDelete) return;
-    const { error } = await supabase.from('leads').delete().eq('id', clientToDelete);
-    if (error) { setMessage({ type: 'error', text: 'Erro ao excluir.' }); return; }
-    setLeads(l => l.filter(x => x.id !== clientToDelete));
-    setIsEditModalOpen(false);
-    setDeleteConfirmOpen(false);
-    setClientToDelete(null);
-    setMessage({ type: 'success', text: 'Cliente excluído.' });
-    setTimeout(() => setMessage(null), 3000);
+    try {
+      // 1. Localizar negócios deste cliente
+      const { data: deals } = await supabase.from('lead_deals').select('id').eq('lead_id', clientToDelete);
+      
+      if (deals && deals.length > 0) {
+        const dealIds = deals.map(d => d.id);
+        
+        // 2. Deletar parcelas vinculadas a estes negócios
+        await supabase.from('deal_installments').delete().in('deal_id', dealIds);
+        
+        // 3. Deletar comissões vinculadas a estes negócios
+        await supabase.from('commissions').delete().in('deal_id', dealIds);
+        
+        // 4. Deletar os negócios
+        await supabase.from('lead_deals').delete().in('id', dealIds);
+      }
+      
+      // 5. Deletar quaisquer comissões diretas ao cliente
+      await supabase.from('commissions').delete().eq('lead_id', clientToDelete);
+
+      // 6. Deletar o cliente
+      const { error } = await supabase.from('leads').delete().eq('id', clientToDelete);
+      
+      if (error) throw error;
+
+      setLeads(l => l.filter(x => x.id !== clientToDelete));
+      setIsEditModalOpen(false);
+      setDeleteConfirmOpen(false);
+      setClientToDelete(null);
+      setMessage({ type: 'success', text: 'Cliente excluído com sucesso.' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+      setMessage({ type: 'error', text: 'Erro ao excluir. O cliente possui vínculos pendentes.' });
+    }
   };
 
   const addDealRow = () =>
@@ -543,7 +575,9 @@ export function ClientsPage() {
         ...deal,
         lead_name: lead.name,
         lead_id: lead.id,
-        partner_id: lead.partner_id // Garante que o ID do parceiro seja repassado corretamente
+        partner_id: lead.partner_id,
+        vendedor_name: (lead as any).profiles?.full_name || (lead as any).profiles?.email || 'Sist.',
+        captador_name: (lead as any).captador?.full_name || (lead as any).captador?.email || null,
       }))
     ).filter(deal => 
       deal.lead_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -579,7 +613,10 @@ export function ClientsPage() {
 
       const { error } = await supabase
         .from('lead_deals')
-        .update({ status: newStatus })
+        .update({ 
+          status: newStatus,
+          payment_status: isClosingDeal ? 'Em Pagamento' : deal.payment_status
+        })
         .eq('id', dealId);
 
       if (error) throw error;
@@ -607,10 +644,12 @@ export function ClientsPage() {
           const configArray = prodData.installment_config as any[];
           for (let idx = 0; idx < configArray.length; idx++) {
             const inst = configArray[idx];
+            const value = inst.value;
+            if (value <= 0) continue; // Skip zerored installments
+            
             const dueDate = new Date(startDate);
             dueDate.setMonth(startDate.getMonth() + idx);
             
-            const value = inst.value;
             let payment_link = null;
             if (infiniteTag) {
               try {
@@ -649,7 +688,9 @@ export function ClientsPage() {
               payment_provider: 'infinitepay'
             });
           }
-          await (supabase as any).from('deal_installments').insert(installments);
+          if (installments.length > 0) {
+            await (supabase as any).from('deal_installments').insert(installments);
+          }
         } else {
           // Lógica À Vista vira 1 parcela única
           const startDate = date ? new Date(date) : new Date();
@@ -950,23 +991,28 @@ export function ClientsPage() {
                           <td className="px-4 py-3 max-w-[200px]">
                             <div className="font-medium text-slate-900 truncate">{client.name}</div>
                           </td>
-                          {isAdmin && (
-                            <td className="px-4 py-3 text-xs text-slate-600 max-w-[150px] truncate">
-                              {client.profiles?.full_name || client.profiles?.email || '-'}
-                            </td>
-                          )}
                           {(isAdmin || isPartner) && (
                             <td className="px-4 py-3 text-xs text-slate-600">
-                              {client.captador ? (
+                              <div className="flex flex-col gap-2">
+                                {/* Vendedor */}
                                 <div className="flex flex-col">
-                                  <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">Captador</span>
-                                  <span>
-                                    {Array.isArray(client.captador) 
-                                      ? (client.captador[0]?.full_name || client.captador[0]?.email || '-')
-                                      : ((client.captador as any).full_name || (client.captador as any).email || '-')}
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Vendedor</span>
+                                  <span className="font-medium text-slate-700">
+                                    {client.profiles?.full_name || client.profiles?.email || '-'}
                                   </span>
                                 </div>
-                              ) : '-'}
+                                {/* Captador (se existir) */}
+                                {client.captador && (
+                                  <div className="flex flex-col pt-1 border-t border-slate-100/50">
+                                    <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-tighter">Captador</span>
+                                    <span className="font-medium text-slate-700">
+                                      {Array.isArray(client.captador) 
+                                        ? (client.captador[0]?.full_name || client.captador[0]?.email || '-')
+                                        : ((client.captador as any).full_name || (client.captador as any).email || '-')}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                           )}
                           <td className="px-4 py-3">
@@ -1186,7 +1232,7 @@ export function ClientsPage() {
                                                             <tr key={inst.id} className="hover:bg-white/80 transition-colors">
                                                               <td className="px-4 py-2 font-medium text-slate-700">{inst.label}</td>
                                                               <td className="px-4 py-2 text-slate-500">
-                                                                {inst.due_date ? new Date(inst.due_date + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                                                                {inst.due_date ? new Date(inst.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}
                                                               </td>
                                                               <td className="px-4 py-2 font-bold text-slate-900">
                                                                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(inst.value)}
@@ -1301,18 +1347,25 @@ export function ClientsPage() {
                   </div>
 
                   <div className="p-3 space-y-4 overflow-y-auto custom-scrollbar">
-                    {stageDeals.map(deal => (
+                    {(stageDeals as any[]).map(deal => (
                       <div key={deal.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 hover:-translate-y-0.5 transition-all group relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: stage.color }} />
                         
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-wider mb-0.5">Cliente</p>
-                            <div className="flex flex-col gap-0.5">
+                            <div className="flex flex-col gap-1">
                               <p className="text-sm font-semibold text-slate-700 line-clamp-1 leading-tight">{deal.lead_name}</p>
-                              <span className="text-[8px] font-bold text-indigo-500 uppercase tracking-wider bg-indigo-50/50 px-1.5 py-0.5 rounded border border-indigo-100/50 self-start">
-                                {deal.partner_role || 'Vendedor'}
-                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  VEND: {deal.vendedor_name || 'Sist.'}
+                                </span>
+                                {deal.captador_name && (
+                                  <span className="text-[7px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100/50">
+                                    CAPT: {deal.captador_name}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-1 translate-x-2">
@@ -1344,7 +1397,16 @@ export function ClientsPage() {
                                 <Package className="w-5 h-5 text-indigo-500/70" />
                               )}
                             </div>
-                            <span className="text-[11px] font-medium text-slate-500 line-clamp-1">{deal.products?.name || 'Sem Produto'}</span>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-[11px] font-medium text-slate-500 line-clamp-1">{deal.products?.name || 'Sem Produto'}</span>
+                              {deal.products?.payment_type && (
+                                <span className={cn("text-[7px] font-bold uppercase tracking-widest w-fit px-1 rounded",
+                                  deal.products.payment_type === 'parcelado' ? "text-amber-600 bg-amber-50" : "text-emerald-600 bg-emerald-50"
+                                )}>
+                                  {deal.products.payment_type === 'parcelado' ? 'Parcelado' : 'À Vista'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           
                           <div className="flex items-center justify-between">
@@ -1692,12 +1754,10 @@ export function ClientsPage() {
                     className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">
                     {(isCaptador || isVendedor) && isEditModalOpen ? 'Fechar' : 'Descartar Alterações'}
                   </button>
-                  {(!(isCaptador || isVendedor) || isAddModalOpen) && (
-                    <button type="submit" disabled={loading || savingDeals}
-                      className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-sm transition-all uppercase tracking-[0.1em] text-[11px] disabled:opacity-50 active:scale-[0.98]">
-                      {loading || savingDeals ? 'Sincronizando...' : 'Confirmar e Salvar Dados'}
-                    </button>
-                  )}
+                  <button type="submit" disabled={loading || savingDeals}
+                    className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-sm transition-all uppercase tracking-[0.1em] text-[11px] disabled:opacity-50 active:scale-[0.98]">
+                    {loading || savingDeals ? 'Sincronizando...' : 'Confirmar e Salvar Dados'}
+                  </button>
                 </div>
               </div>
             </form>
@@ -1732,7 +1792,15 @@ export function ClientsPage() {
                   <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Solução / Produto</label>
                   <select 
                     value={tempDeal.product_id}
-                    onChange={e => setTempDeal({...tempDeal, product_id: e.target.value})}
+                    onChange={e => {
+                      const productId = e.target.value;
+                      const prod = products.find(p => p.id === productId);
+                      setTempDeal({
+                        ...tempDeal,
+                        product_id: productId,
+                        value: prod?.price ? prod.price.toString() : (tempDeal.value || '0')
+                      });
+                    }}
                     disabled={(!isAdmin && !isVendedor) && !!tempDeal.id}
                     className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >

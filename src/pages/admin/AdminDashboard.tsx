@@ -35,7 +35,8 @@ export function AdminDashboard() {
           id, status, value, created_at, partner_id, lead_id, product_id, partner_role,
           leads (name),
           profiles:partner_id (full_name),
-          products (name, commission_value, commission_direct, commission_lvl1, commission_lvl2, commission_captador, commission_indicator)
+          products (name, payment_type, commission_value, commission_direct, commission_lvl1, commission_lvl2, commission_captador, commission_indicator),
+          deal_installments (status)
         `).gte('created_at', dateStart).lte('created_at', `${dateEnd}T23:59:59`).order('created_at', { ascending: false }),
         supabase.from('commissions').select('amount, status, type').gte('created_at', dateStart).lte('created_at', `${dateEnd}T23:59:59`)
       ]);
@@ -85,112 +86,7 @@ export function AdminDashboard() {
     }
   };
 
-  const handleFaturar = async (deal: any) => {
-    try {
-      setLoading(true);
-      
-      if (!deal.partner_id) {
-        setMessage({ type: 'error', text: 'Erro: Este negócio não possui um parceiro associado e não pode ser faturado.' });
-        return;
-      }
 
-      // 0. Verificar se já não foi faturado
-      const { data: existing } = await supabase
-        .from('commissions')
-        .select('id')
-        .eq('deal_id', deal.id)
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        setMessage({ type: 'error', text: 'Este negócio já foi faturado anteriormente.' });
-        return;
-      }
-
-      // 1. Buscar o perfil do vendedor (dono do negócio) para pegar a árvore de referências
-      const { data: seller, error: sellerError } = await supabase
-        .from('profiles')
-        .select('id, referred_by, full_name') // Added full_name for notes
-        .eq('id', deal.partner_id)
-        .single();
-
-      if (sellerError) throw sellerError;
-
-      const commissionsToInsert = [];
-
-      // Definir valor da comissão direta baseado no papel
-      let directCommissionAmount = 0;
-      const role = deal.partner_role || 'Vendedor';
-      
-      if (role === 'Vendedor') {
-        directCommissionAmount = deal.products?.commission_direct || deal.products?.commission_value || 0;
-      } else if (role === 'Captador') {
-        directCommissionAmount = deal.products?.commission_captador || 0;
-      } else if (role === 'Indicador') {
-        directCommissionAmount = deal.products?.commission_indicator || 0;
-      }
-
-      // A. Comissão Direta (Vendedor/Captador/Indicador)
-      commissionsToInsert.push({
-        partner_id: deal.partner_id,
-        lead_id: deal.lead_id,
-        deal_id: deal.id,
-        product_id: deal.product_id,
-        amount: directCommissionAmount,
-        status: 'Disponível',
-        type: 'credit',
-        notes: `Comissão (${role})`
-      });
-
-      // B. Comissão Nível 1 (Indicador do Vendedor)
-      if (seller.referred_by && deal.products?.commission_lvl1 > 0) {
-        commissionsToInsert.push({
-          partner_id: seller.referred_by,
-          lead_id: deal.lead_id,
-          deal_id: deal.id,
-          product_id: deal.product_id,
-          amount: deal.products.commission_lvl1,
-          status: 'Disponível',
-          type: 'credit',
-          notes: `Indicação Lvl 1 (Venda de ${seller.full_name || 'Parceiro'})`
-        });
-
-        // C. Comissão Nível 2 (Indicador do Indicador)
-        const { data: lvl1Partner } = await supabase
-          .from('profiles')
-          .select('referred_by')
-          .eq('id', seller.referred_by)
-          .single();
-
-        if (lvl1Partner?.referred_by && deal.products?.commission_lvl2 > 0) {
-          commissionsToInsert.push({
-            partner_id: lvl1Partner.referred_by,
-            lead_id: deal.lead_id,
-            deal_id: deal.id,
-            product_id: deal.product_id,
-            amount: deal.products.commission_lvl2,
-            status: 'Disponível',
-            type: 'credit',
-            notes: 'Indicação Lvl 2'
-          });
-        }
-      }
-
-      const { error: commError } = await supabase
-        .from('commissions')
-        .insert(commissionsToInsert);
-
-      if (commError) throw commError;
-      
-      setMessage({ type: 'success', text: 'Negócio faturado com sucesso em todos os níveis disponíveis!' });
-      fetchData();
-    } catch (error: any) {
-      console.error('Erro ao faturar:', error);
-      setMessage({ type: 'error', text: 'Erro ao faturar: ' + error.message });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(null), 3000);
-    }
-  };
 
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -349,7 +245,17 @@ export function AdminDashboard() {
                 {filteredDeals.map((d) => (
                   <tr key={d.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-semibold text-slate-900">{d.products?.name || '—'}</p>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-semibold text-slate-900">{d.products?.name || '—'}</p>
+                        {d.products?.payment_type && (
+                          <span className={cn(
+                            "text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider",
+                            d.products.payment_type === 'parcelado' ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"
+                          )}>
+                            {d.products.payment_type === 'parcelado' ? 'Parcelado' : 'À Vista'}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-500">Cliente: {d.leads?.name || '—'}</p>
                     </td>
                     <td className="px-6 py-4">
@@ -367,14 +273,26 @@ export function AdminDashboard() {
                       {fmt(d.value)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {(d.status?.toLowerCase() === 'fechado' || d.status?.toLowerCase() === 'vendido') && (
-                        <button 
-                          onClick={() => handleFaturar(d)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-shadow shadow-sm"
-                        >
-                          <TrendingUp className="w-3.5 h-3.5" />
-                          FATURAR
-                        </button>
+                      {d.products?.payment_type === 'parcelado' && d.status === 'Fechado' && d.deal_installments ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Status Parcelas</span>
+                          <div className="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
+                            <div className="flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              <span className="text-[11px] font-bold text-emerald-700">
+                                {d.deal_installments.filter((i: any) => i.status?.toLowerCase() === 'pago').length}
+                              </span>
+                            </div>
+                            <div className="w-px h-2.5 bg-slate-300" />
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-bold text-slate-600">
+                                {d.deal_installments.length}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-300 uppercase italic">Sem parcelas</span>
                       )}
                     </td>
                   </tr>
