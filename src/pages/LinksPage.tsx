@@ -449,7 +449,17 @@ export function LinksPage() {
                                 )}
                               </div>
                               <div>
-                                <h3 className="font-semibold text-slate-900">{product.name}</h3>
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-semibold text-slate-900">{product.name}</h3>
+                                  <span className={cn(
+                                    "px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md border",
+                                    product.payment_type === 'parcelado' 
+                                      ? "bg-amber-50 text-amber-600 border-amber-100/50" 
+                                      : "bg-emerald-50 text-emerald-600 border-emerald-100/50"
+                                  )}>
+                                    {product.payment_type === 'parcelado' ? 'Parcelado' : 'À Vista'}
+                                  </span>
+                                </div>
                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Comissão:</span>
@@ -540,7 +550,17 @@ export function LinksPage() {
                           )}
                         </div>
                         <div>
-                          <h3 className="font-semibold text-slate-900">{product.name}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-slate-900">{product.name}</h3>
+                            <span className={cn(
+                              "px-1.5 py-0.5 text-[8px] font-bold uppercase rounded-md border",
+                              product.payment_type === 'parcelado' 
+                                ? "bg-amber-50 text-amber-600 border-amber-100/50" 
+                                : "bg-emerald-50 text-emerald-600 border-emerald-100/50"
+                            )}>
+                              {product.payment_type === 'parcelado' ? 'Parcelado' : 'À Vista'}
+                            </span>
+                          </div>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Comissão Direta:</span>
