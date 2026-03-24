@@ -169,6 +169,7 @@ export interface Database {
           payment_link: string | null
           created_at: string
           deal_number: number | null
+          completion_estimate_days: number | null
         }
         Insert: {
           id?: string
@@ -187,6 +188,7 @@ export interface Database {
           payment_link?: string | null
           created_at?: string
           deal_number?: number | null
+          completion_estimate_days?: number | null
         }
         Update: {
           id?: string
@@ -205,6 +207,7 @@ export interface Database {
           payment_link?: string | null
           created_at?: string
           deal_number?: number | null
+          completion_estimate_days?: number | null
         }
         Relationships: [
           { foreignKeyName: "lead_deals_lead_id_fkey"; columns: ["lead_id"]; referencedRelation: "leads"; referencedColumns: ["id"] },

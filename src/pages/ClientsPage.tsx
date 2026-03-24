@@ -16,7 +16,8 @@ type Product = Database['public']['Tables']['products']['Row'];
 type LeadDeal = Database['public']['Tables']['lead_deals']['Row'] & {
   products?: { name: string, image_url: string | null } | null;
   captador_id?: string | null;
-  payment_status?: 'Pendente' | 'Pago' | 'Cancelado' | null;
+  payment_status?: 'Pendente' | 'Em Pagamento' | 'Pago' | 'Cancelado' | null;
+  completion_estimate_days?: number | null;
 };
 
 type DealFormRow = {
@@ -30,7 +31,8 @@ type DealFormRow = {
   pending_description: string;
   pending_document_url: string;
   partner_role: string;
-  payment_status: 'Pendente' | 'Pago' | 'Cancelado';
+  payment_status: 'Pendente' | 'Em Pagamento' | 'Pago' | 'Cancelado';
+  completion_estimate_days: number;
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -134,7 +136,8 @@ export function ClientsPage() {
     pending_description: '',
     pending_document_url: '',
     partner_role: 'Vendedor',
-    payment_status: 'Pendente'
+    payment_status: 'Pendente',
+    completion_estimate_days: 0
   });
 
   useEffect(() => { 
@@ -155,6 +158,7 @@ export function ClientsPage() {
           lead_deals (
             id, status, value, payment_method, notes, product_id, created_at,
             execution_status, pending_description, pending_document_url, payment_status, payment_link,
+            completion_estimate_days,
             products (name, image_url, payment_type)
           )
         `).order('created_at', { ascending: false }),
@@ -224,6 +228,7 @@ export function ClientsPage() {
       pending_document_url: d.pending_document_url || '',
       partner_role: d.partner_role || 'Vendedor',
       payment_status: d.payment_status || 'Pendente',
+      completion_estimate_days: d.completion_estimate_days || 0,
     })));
   };
 
@@ -311,11 +316,9 @@ export function ClientsPage() {
           const upd: any = {
             product_id: row.product_id || null,
             value: parseFloat(row.value.replace(',', '.')) || 0,
-            notes: row.notes || null,
-            execution_status: row.execution_status || 'A iniciar',
-            pending_description: row.pending_description || null,
             pending_document_url: row.pending_document_url || null,
             partner_role: row.partner_role || 'Vendedor',
+            completion_estimate_days: row.completion_estimate_days || 0,
           };
           if (isAdmin) {
             upd.status = row.status;
@@ -332,7 +335,7 @@ export function ClientsPage() {
             if (correctPartnerId && row.product_id) {
               const { data: prodData } = await supabase
                 .from('products')
-                .select('commission_value, commission_direct, commission_captador, commission_indicator, payment_type, installment_config')
+                .select('payment_type, installment_config, commission_direct, commission_value, commission_captador, commission_indicator, commission_lvl1, commission_lvl2')
                 .eq('id', row.product_id)
                 .single();
 
@@ -351,28 +354,22 @@ export function ClientsPage() {
                   await (supabase as any).from('deal_installments').insert(installments);
                 }
               } else {
-                let commissionAmount = 0;
-                const role = row.partner_role || 'Vendedor';
-                if (role === 'Vendedor') commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
-                else if (role === 'Captador') commissionAmount = prodData?.commission_captador || 0;
-                else if (role === 'Indicador') commissionAmount = prodData?.commission_indicator || 0;
-
-                if (commissionAmount > 0) {
-                  const commissionPartnerId = (role === 'Captador' && selectedClient?.captador_id) ? selectedClient.captador_id : correctPartnerId;
-                  if (commissionPartnerId) {
-                    await supabase.from('commissions').upsert([{
-                      partner_id: commissionPartnerId,
-                      lead_id: leadId,
-                      deal_id: row.id,
-                      product_id: row.product_id,
-                      amount: commissionAmount,
-                      status: 'Pendente',
-                    }], { onConflict: 'deal_id' });
-
-                    const { data: profileData } = await supabase.from('profiles').select('balance').eq('id', commissionPartnerId).single();
-                    await supabase.from('profiles').update({ balance: (profileData?.balance || 0) + commissionAmount }).eq('id', commissionPartnerId);
+                // Para "À Vista", cria uma parcela única com as configurações de comissão
+                const singleInstallment = {
+                  deal_id: row.id,
+                  installment_number: 0,
+                  label: 'À Vista',
+                  value: parseFloat(row.value.replace(',', '.')) || 0,
+                  status: 'Pendente',
+                  commissions_config: {
+                    vendedor: prodData?.commission_direct || prodData?.commission_value || 0,
+                    captador: prodData?.commission_captador || 0,
+                    indicador: prodData?.commission_indicator || 0,
+                    lvl1: prodData?.commission_lvl1 || 0,
+                    lvl2: prodData?.commission_lvl2 || 0
                   }
-                }
+                };
+                await (supabase as any).from('deal_installments').insert([singleInstallment]);
               }
             }
           }
@@ -391,6 +388,7 @@ export function ClientsPage() {
             pending_description: row.pending_description || null,
             pending_document_url: row.pending_document_url || null,
             partner_role: row.partner_role || 'Vendedor',
+            completion_estimate_days: row.completion_estimate_days || 0,
           };
           if (isAdmin) {
             ins.payment_method = row.payment_method || null;
@@ -464,7 +462,8 @@ export function ClientsPage() {
       pending_description: '',
       pending_document_url: '',
       partner_role: 'Vendedor',
-      payment_status: 'Pendente'
+      payment_status: 'Pendente',
+      completion_estimate_days: 0
     }]);
 
   const updRow = (i: number, f: keyof DealFormRow, v: string) =>
@@ -485,7 +484,8 @@ export function ClientsPage() {
         pending_description: '',
         pending_document_url: '',
         partner_role: 'Vendedor',
-        payment_status: 'Pendente'
+        payment_status: 'Pendente',
+        completion_estimate_days: 0
       });
       setEditingDealIdx(null);
     }
@@ -760,58 +760,6 @@ export function ClientsPage() {
     setTimeout(() => setMessage(null), 3000);
   };
 
-  const handleFaturar = async (deal: LeadDeal, leadId: string, partnerId: string) => {
-    try {
-      setLoading(true);
-      if (!partnerId) {
-        throw new Error('ID do parceiro não encontrado para este negócio.');
-      }
-
-      const { data: prodData } = await supabase
-        .from('products')
-        .select('commission_value, commission_direct, commission_captador, commission_indicator')
-        .eq('id', deal.product_id || '')
-        .single();
-
-      let commissionAmount = 0;
-      const role = deal.partner_role || 'Vendedor';
-
-      if (role === 'Vendedor') {
-        commissionAmount = prodData?.commission_direct || prodData?.commission_value || 0;
-      } else if (role === 'Captador') {
-        commissionAmount = prodData?.commission_captador || 0;
-      } else if (role === 'Indicador') {
-        commissionAmount = prodData?.commission_indicator || 0;
-      }
-
-      const commissionPartnerId = (role === 'Captador' && deal.captador_id) 
-        ? deal.captador_id 
-        : partnerId;
-
-      const { error: commError } = await supabase
-        .from('commissions')
-        .insert([{
-          partner_id: commissionPartnerId,
-          lead_id: leadId,
-          deal_id: deal.id,
-          product_id: deal.product_id,
-          amount: commissionAmount,
-          status: 'Disponível',
-          type: 'credit',
-          notes: `Comissão (${role})`
-        }]);
-
-      if (commError) throw commError;
-      
-      setMessage({ type: 'success', text: 'Negócio faturado com sucesso!' });
-      await loadData();
-    } catch (error: any) {
-      console.error('Erro ao faturar:', error);
-      setMessage({ type: 'error', text: 'Erro ao faturar: ' + error.message });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleFaturarParcela = async (installment: any, deal: any, leadId: string) => {
     try {
@@ -826,7 +774,7 @@ export function ClientsPage() {
       if (updError) throw updError;
 
       // 2. Gerar comissões configuradas para esta parcela via RPC (unificado)
-      const { error: rpcError } = await supabase.rpc('fn_generate_commissions_for_installment', { 
+      const { error: rpcError } = await (supabase as any).rpc('fn_generate_commissions_for_installment', { 
         p_installment_id: installment.id 
       });
 
@@ -989,7 +937,11 @@ export function ClientsPage() {
                             </button>
                           </td>
                           <td className="px-4 py-3 max-w-[200px]">
-                            <div className="font-medium text-slate-900 truncate">{client.name}</div>
+                            <div className={cn("font-medium truncate", 
+                              deals.some(d => d.payment_status === 'Em Pagamento') ? "text-violet-600" : "text-slate-900"
+                            )}>
+                              {client.name}
+                            </div>
                           </td>
                           {(isAdmin || isPartner) && (
                             <td className="px-4 py-3 text-xs text-slate-600">
@@ -1198,7 +1150,18 @@ export function ClientsPage() {
                                                         <LinkIcon className="w-4 h-4" />
                                                       </button>
                                                     {isAdmin && d.status === 'Fechado' && !dealInstallments[d.id] && (
-                                                      <button onClick={() => handleFaturar(d, client.id, client.partner_id)} className="px-3 py-1.5 bg-indigo-600/90 text-white rounded-lg text-[10px] font-semibold hover:bg-indigo-700 transition-all shadow-sm uppercase tracking-tighter">
+                                                      <button 
+                                                        onClick={async () => {
+                                                          const { data: insts } = await (supabase as any).from('deal_installments').select('id, status').eq('deal_id', d.id);
+                                                          const pending = insts?.find((i: any) => i.status !== 'Pago');
+                                                          if (pending) {
+                                                            handleFaturarParcela(pending, d, client.id);
+                                                          } else {
+                                                            setMessage({ type: 'success', text: 'Todas as parcelas já estão pagas.' });
+                                                          }
+                                                        }}
+                                                        className="px-3 py-1.5 bg-indigo-600/90 text-white rounded-lg text-[10px] font-semibold hover:bg-indigo-700 transition-all shadow-sm uppercase tracking-tighter"
+                                                      >
                                                         Faturar
                                                       </button>
                                                     )}
@@ -1355,14 +1318,18 @@ export function ClientsPage() {
                           <div>
                             <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-wider mb-0.5">Cliente</p>
                             <div className="flex flex-col gap-1">
-                              <p className="text-sm font-semibold text-slate-700 line-clamp-1 leading-tight">{deal.lead_name}</p>
-                              <div className="flex flex-wrap gap-1">
-                                <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                  VEND: {deal.vendedor_name || 'Sist.'}
+                              <p className={cn("text-sm font-semibold line-clamp-1 leading-tight tracking-tight", 
+                                deal.payment_status === 'Em Pagamento' ? "text-violet-600" : "text-slate-700"
+                              )}>
+                                {deal.lead_name}
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100 flex items-center gap-1">
+                                  <div className="w-1 h-1 rounded-full bg-slate-300" /> VENDEDOR: {deal.vendedor_name || 'Sist.'}
                                 </span>
                                 {deal.captador_name && (
-                                  <span className="text-[7px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100/50">
-                                    CAPT: {deal.captador_name}
+                                  <span className="text-[7px] font-bold text-violet-600 uppercase tracking-widest bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100/50 flex items-center gap-1">
+                                    <div className="w-1 h-1 rounded-full bg-violet-400" /> CAPTADOR: {deal.captador_name}
                                   </span>
                                 )}
                               </div>
@@ -1451,9 +1418,18 @@ export function ClientsPage() {
                               </div>
                             </div>
 
-                            {isAdmin && deal.status === 'Fechado' && (
+                            {isAdmin && deal.status === 'Fechado' && deal.payment_status !== 'Pago' && (
                               <button 
-                                onClick={() => handleFaturar(deal, deal.lead_id, deal.partner_id)}
+                                onClick={async () => {
+                                  // Se for à vista, faturar a parcela correspondente
+                                  const { data: insts } = await (supabase as any).from('deal_installments').select('id, status').eq('deal_id', deal.id);
+                                  const pending = insts?.find((i: any) => i.status !== 'Pago');
+                                  if (pending) {
+                                    handleFaturarParcela(pending, deal, deal.lead_id);
+                                  } else {
+                                    setMessage({ type: 'success', text: 'Todas as parcelas já estão pagas.' });
+                                  }
+                                }}
                                 className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-[10px] font-semibold hover:bg-black transition-all shadow-sm uppercase tracking-[0.2em] flex items-center justify-center gap-2 group/btn"
                               >
                                 <TrendingUp className="w-3.5 h-3.5 text-indigo-400/80 group-hover:scale-110 transition-transform" />
@@ -1853,6 +1829,20 @@ export function ClientsPage() {
                       value={tempDeal.value}
                       onChange={e => setTempDeal({...tempDeal, value: e.target.value})}
                       className="w-full bg-slate-50/50 border border-slate-100 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all tabular-nums"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider ml-1">Prazo de Conclusão (Dias Úteis)</label>
+                  <div className="relative group">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 w-4 h-4 group-focus-within:text-indigo-500 transition-colors" />
+                    <input 
+                      type="number" min="0"
+                      value={tempDeal.completion_estimate_days}
+                      onChange={e => setTempDeal({...tempDeal, completion_estimate_days: parseInt(e.target.value) || 0})}
+                      placeholder="Ex: 5"
+                      className="w-full bg-slate-50/50 border border-slate-100 rounded-xl pl-11 pr-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all tabular-nums"
                     />
                   </div>
                 </div>

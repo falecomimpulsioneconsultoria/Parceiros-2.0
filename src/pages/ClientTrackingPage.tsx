@@ -38,7 +38,11 @@ import {
   ArrowRight, 
   ShieldCheck, 
   Truck, 
-  CreditCard 
+  CreditCard,
+  Calendar,
+  AlertCircle,
+  DollarSign,
+  Check
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -160,6 +164,16 @@ type DealInfo = {
   pending_description: string | null;
   pending_document_url: string | null;
   created_at: string;
+  completion_estimate_days: number | null;
+  deal_installments: {
+    id: string;
+    installment_number: number;
+    value: number;
+    status: string;
+    paid_at: string | null;
+    payment_link: string | null;
+    due_date: string | null;
+  }[];
   products: { name: string } | null;
 };
 
@@ -183,6 +197,19 @@ const COMMERCIAL_CONFIG: Record<string, { color: string; label: string }> = {
   'Em Negociação': { color: '#f59e0b',   label: 'Em Negociação' },
   'Fechado':       { color: '#10b981',   label: 'Contrato Ativo' },
   'Perdido':       { color: '#ef4444',   label: 'Cancelado' },
+};
+
+const addBusinessDays = (dateStr: string, days: number) => {
+  if (!days || days <= 0) return null;
+  let result = new Date(dateStr);
+  let addedDays = 0;
+  while (addedDays < days) {
+    result.setDate(result.getDate() + 1);
+    if (result.getDay() !== 0 && result.getDay() !== 6) {
+      addedDays++;
+    }
+  }
+  return result;
 };
 
 export function ClientTrackingPage() {
@@ -223,6 +250,10 @@ export function ClientTrackingPage() {
           name, email, phone,
           lead_deals (
             id, status, value, execution_status, pending_description, pending_document_url, created_at,
+            completion_estimate_days,
+            deal_installments (
+              id, installment_number, value, status, paid_at, payment_link, due_date
+            ),
             products (name)
           )
         `)
@@ -359,7 +390,10 @@ export function ClientTrackingPage() {
                     <Typography variant="h4" sx={{ mb: 1, color: 'text.primary' }}>
                       Olá, <strong style={{ fontWeight: 700 }}>{leadData?.name?.split(' ')[0]}</strong>
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
+                    <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500, fontSize: '1.2rem' }}>
+                      {leadData?.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 400, mt: 1 }}>
                       Acompanhe abaixo o andamento de seus contratos ativos.
                     </Typography>
                   </Box>
@@ -423,12 +457,27 @@ export function ClientTrackingPage() {
 
                             <Box sx={{ 
                               p: 4, 
-                              bgcolor: alpha(exec.color, 0.03), 
-                              border: `1px solid ${alpha(exec.color, 0.08)}`, 
-                              borderRadius: 6,
-                              mb: 4
+                              bgcolor: alpha(exec.color, 0.02),
+                              borderRadius: '24px',
+                              border: `1px solid ${alpha(exec.color, 0.1)}`,
+                              backdropFilter: 'blur(10px)',
+                              mb: 4,
+                              position: 'relative',
+                              overflow: 'hidden'
                             }}>
-                              <Stack direction="row" spacing={2.5} alignItems="center" mb={3}>
+                              {/* Elemento Decorativo */}
+                              <Box sx={{ 
+                                position: 'absolute', 
+                                top: -50, 
+                                right: -50, 
+                                width: 150, 
+                                height: 150, 
+                                borderRadius: '50%', 
+                                bgcolor: alpha(exec.color, 0.05), 
+                                filter: 'blur(40px)',
+                                zIndex: 0
+                              }} />
+                              <Stack direction="row" spacing={2.5} alignItems="center" mb={3} sx={{ position: 'relative', zIndex: 1 }}>
                                 <Box sx={{ 
                                   width: 40, 
                                   height: 40, 
@@ -448,27 +497,229 @@ export function ClientTrackingPage() {
                                     {exec.label}
                                   </Typography>
                                 </Box>
-                                {deal.execution_status === 'Em andamento' && (
-                                  <CircularProgress size={20} sx={{ color: exec.color, opacity: 0.5 }} thickness={5} />
+                              </Stack>
+
+                              <Stack spacing={4} sx={{ mt: 2 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', position: 'relative', px: 1 }}>
+                                  {/* Progress Line */}
+                                  <Box sx={{ 
+                                    position: 'absolute', 
+                                    top: 13, 
+                                    left: '10%', 
+                                    right: '10%', 
+                                    height: 2, 
+                                    bgcolor: alpha(exec.color, 0.1), 
+                                    zIndex: 0 
+                                  }} />
+                                  
+                                  {(() => {
+                                    const isPaid = deal.deal_installments?.some(i => i.status === 'Pago');
+                                    const activeStep = deal.execution_status === 'Concluido' ? 3 
+                                                     : (deal.execution_status === 'Em andamento' || deal.execution_status === 'Pendenciado') ? 2
+                                                     : isPaid ? 2 // Pago, então está em produção
+                                                     : 1; // Não pago, então está em pagamento
+                                    
+                                    const steps = [
+                                      { label: 'Contrato', icon: ShieldCheck },
+                                      { label: 'Pagamento', icon: CreditCard },
+                                      { label: 'Produção', icon: Package },
+                                      { label: 'Entrega', icon: CheckCircle },
+                                    ];
+
+                                    return (
+                                      <>
+                                        <Box sx={{ 
+                                          position: 'absolute', 
+                                          top: 13, 
+                                          left: '10%', 
+                                          width: `${(activeStep / (steps.length - 1)) * 80}%`, 
+                                          height: 2, 
+                                          bgcolor: exec.color, 
+                                          zIndex: 1,
+                                          transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                                        }} />
+
+                                        {steps.map((step, idx) => {
+                                          const StepIcon = step.icon;
+                                          const isCompleted = idx < activeStep || (deal.execution_status === 'Concluido');
+                                          const isActive = idx === activeStep && deal.execution_status !== 'Concluido';
+                                          
+                                          return (
+                                            <Box key={idx} sx={{ 
+                                              position: 'relative', 
+                                              zIndex: 2, 
+                                              display: 'flex', 
+                                              flexDirection: 'column', 
+                                              alignItems: 'center', 
+                                              gap: 1.5 
+                                            }}>
+                                              <Box sx={{ 
+                                                width: 28, 
+                                                height: 28, 
+                                                borderRadius: '50%', 
+                                                bgcolor: isCompleted ? exec.color : isActive ? '#fff' : '#fff',
+                                                border: `2px solid ${isCompleted || isActive ? exec.color : alpha(exec.color, 0.2)}`,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                boxShadow: isActive ? `0 0 15px ${alpha(exec.color, 0.3)}` : 'none',
+                                                transition: 'all 0.5s ease'
+                                              }}>
+                                                {isCompleted ? (
+                                                  <Check size={14} color="#fff" strokeWidth={3} />
+                                                ) : (
+                                                  <Box sx={{ 
+                                                    width: 8, 
+                                                    height: 8, 
+                                                    borderRadius: '50%', 
+                                                    bgcolor: isActive ? exec.color : alpha(exec.color, 0.1),
+                                                    animation: isActive ? 'pulse 2s infinite' : 'none',
+                                                    '@keyframes pulse': {
+                                                      '0%': { transform: 'scale(0.8)', opacity: 0.5 },
+                                                      '50%': { transform: 'scale(1.2)', opacity: 1 },
+                                                      '100%': { transform: 'scale(0.8)', opacity: 0.5 },
+                                                    }
+                                                  }} />
+                                                )}
+                                              </Box>
+                                              <Typography variant="caption" sx={{ 
+                                                fontWeight: 700, 
+                                                color: isCompleted || isActive ? 'text.primary' : 'text.secondary',
+                                                fontSize: '0.6rem',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.05em',
+                                                opacity: isCompleted || isActive ? 1 : 0.4
+                                              }}>
+                                                {step.label}
+                                              </Typography>
+                                            </Box>
+                                          );
+                                        })}
+                                      </>
+                                    );
+                                  })()}
+                                </Box>
+                              </Stack>
+
+                                {/* Completion Estimate Section */}
+                                {deal.completion_estimate_days && deal.completion_estimate_days > 0 && (
+                                  <Box sx={{ mt: 3, p: 2, bgcolor: alpha(theme.palette.primary.main, 0.05), borderRadius: 4, display: 'flex', alignItems: 'center', gap: 2, border: '1px solid', borderColor: alpha(theme.palette.primary.main, 0.1) }}>
+                                    <Calendar size={18} color={theme.palette.primary.main} />
+                                    <Box>
+                                      <Typography variant="caption" sx={{ color: 'primary.dark', fontWeight: 700, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.65rem' }}>
+                                        Estimativa de Entrega
+                                      </Typography>
+                                      <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.dark' }}>
+                                        {(() => {
+                                          const paid = deal.deal_installments
+                                            ?.filter(i => i.status === 'Pago' && i.paid_at)
+                                            .sort((a, b) => new Date(a.paid_at!).getTime() - new Date(b.paid_at!).getTime())[0];
+                                          
+                                          if (!paid) return `Prazo de ${deal.completion_estimate_days} dias úteis (após o 1º pagamento)`;
+                                          
+                                          const date = addBusinessDays(paid.paid_at!, deal.completion_estimate_days!);
+                                          return date ? `Previsão: ${date.toLocaleDateString('pt-BR')}` : `${deal.completion_estimate_days} dias úteis`;
+                                        })()}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                )}
+                              </Box>
+
+                            {/* Financial Details Section */}
+                            <Box sx={{ mt: 4 }}>
+                              <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontWeight: 700, mb: 2, textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <DollarSign size={14} /> Detalhamento Financeiro
+                              </Typography>
+                              <Stack spacing={1.5}>
+                                {deal.deal_installments && deal.deal_installments.length > 0 ? (
+                                  deal.deal_installments
+                                    .sort((a, b) => a.installment_number - b.installment_number)
+                                    .map((inst) => (
+                                      <Box key={inst.id} sx={{ 
+                                        p: 2, 
+                                        bgcolor: inst.status === 'Pago' ? alpha('#10b981', 0.03) : '#fff',
+                                        border: '1px solid',
+                                        borderColor: inst.status === 'Pago' ? alpha('#10b981', 0.1) : '#f1f5f9',
+                                        borderRadius: 4,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                      }}>
+                                        <Box display="flex" alignItems="center" gap={2}>
+                                          <Box sx={{ 
+                                            width: 32, 
+                                            height: 32, 
+                                            borderRadius: '8px', 
+                                            bgcolor: inst.status === 'Pago' ? alpha('#10b981', 0.1) : '#f8fafc',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: inst.status === 'Pago' ? '#10b981' : '#64748b',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 700
+                                          }}>
+                                            {inst.installment_number}
+                                          </Box>
+                                          <Box>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary', fontSize: '0.85rem' }}>
+                                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(inst.value)}
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                                              {inst.status === 'Pago' && inst.paid_at 
+                                                ? `Pago em ${new Date(inst.paid_at).toLocaleDateString('pt-BR')}`
+                                                : `Vencimento: ${new Date(inst.due_date).toLocaleDateString('pt-BR')}`
+                                              }
+                                            </Typography>
+                                          </Box>
+                                        </Box>
+                                        <Box>
+                                          {inst.status === 'Pago' ? (
+                                            <Chip 
+                                              label="PAGO" 
+                                              size="small" 
+                                              color="secondary" 
+                                              sx={{ height: 20, fontSize: '0.65rem', borderRadius: '4px' }} 
+                                            />
+                                          ) : (
+                                            <Box display="flex" alignItems="center" gap={1}>
+                                              <Chip 
+                                                label="PENDENTE" 
+                                                size="small" 
+                                                sx={{ height: 20, fontSize: '0.65rem', borderRadius: '4px', bgcolor: '#f1f5f9' }} 
+                                              />
+                                              {inst.payment_link && (
+                                                <Button 
+                                                  variant="contained"
+                                                  size="small"
+                                                  href={inst.payment_link} 
+                                                  target="_blank"
+                                                  startIcon={<CreditCard size={14} />}
+                                                  sx={{ 
+                                                    height: 28, 
+                                                    fontSize: '0.7rem', 
+                                                    borderRadius: '8px',
+                                                    textTransform: 'none',
+                                                    boxShadow: 'none',
+                                                    bgcolor: alpha(theme.palette.primary.main, 0.9),
+                                                    '&:hover': {
+                                                      bgcolor: theme.palette.primary.main,
+                                                      boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.2)}`
+                                                    }
+                                                  }}
+                                                >
+                                                  Pagar
+                                                </Button>
+                                              )}
+                                            </Box>
+                                          )}
+                                        </Box>
+                                      </Box>
+                                    ))
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary">Nenhuma parcela registrada.</Typography>
                                 )}
                               </Stack>
-                              
-                              <Box sx={{ position: 'relative', pt: 1 }}>
-                                <LinearProgress 
-                                  variant={deal.execution_status === 'Em andamento' ? "indeterminate" : "determinate"}
-                                  value={deal.execution_status === 'Concluido' ? 100 : 15} 
-                                  sx={{ 
-                                    height: 10, 
-                                    borderRadius: 5, 
-                                    bgcolor: alpha(exec.color, 0.05), 
-                                    '& .MuiLinearProgress-bar': { 
-                                      bgcolor: exec.color,
-                                      borderRadius: 5,
-                                      boxShadow: `0 0 10px ${alpha(exec.color, 0.3)}`
-                                    } 
-                                  }}
-                                />
-                              </Box>
                             </Box>
 
                             {deal.execution_status === 'Pendenciado' && deal.pending_description && (
